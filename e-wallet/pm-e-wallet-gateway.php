@@ -139,12 +139,14 @@ function e_wallet_init_gateway_class() {
             }
 
             echo '<div class="form-row form-row-wide"><br>
-                    <p style="font-size:15px;">Please select your payment method:<span class="required">*</span></p>                    
+                    <p style="font-size:15px;"><span class="required">*</span>
+                        Please select your payment method:
+                    </p>
                     <label for="gcash" style="font-size:14px;">
                         <input type="radio" id="gcash" name="e_wallet" value="gcash" checked/>
                         GCash
                     </label><br>                    
-                    <label for="card" style="font-size:14px;">
+                    <label for="grab_pay" style="font-size:14px;">
                         <input type="radio" id="grab_pay" name="e_wallet" value="grab_pay"/>
                         Grab Pay
                     </label><br>

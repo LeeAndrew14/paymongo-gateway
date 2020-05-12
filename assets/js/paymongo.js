@@ -1,7 +1,8 @@
 var successCallback = function(data) {
  
 	var checkout_form = $( 'form.woocommerce-checkout' );
- 
+	console.log(data);
+
 	// add a token to our hidden input field
 	// console.log(data) to find the token
 	checkout_form.find('#paymongo_token').val(data.token);
