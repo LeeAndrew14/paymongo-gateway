@@ -27,7 +27,7 @@ function e_wallet_init_gateway_class() {
          
             // Load settings.
             $this->init_settings();
-            $this->icon = $this->get_option( 'icon', '' );
+            $this->icon = $this->get_option( 'icon' );
             $this->title = $this->get_option( 'title' );
             $this->description = $this->get_option( 'description' );
             $this->enabled = $this->get_option( 'enabled' );
@@ -47,9 +47,6 @@ function e_wallet_init_gateway_class() {
 
             // Saves the settings
             add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
-         
-            // Use to obtain token, not used for now
-            add_action( 'wp_enqueue_scripts', array( $this, 'payment_scripts' ) );
          
             // Register a webhook here
             add_action( 'woocommerce_api_{webhook name}', array( $this, 'webhook' ) );
@@ -125,28 +122,34 @@ function e_wallet_init_gateway_class() {
 	 	}
  
 		/**
-		 * For custom credit card form
+		 * For selecting payment method
 		 */
 		public function payment_fields() {
+            global $woocommerce, $post;
 
-            // ok, let's display some description before the payment form
+            // Display some description before the payment form
             if ( $this->description ) {
-                // you can instructions for test mode, I mean test card numbers etc.
+                // Instructions for test mode
                 if ( $this->testmode ) {
                     $this->description .= ' TEST MODE ENABLED. In test mode, you can use the card numbers listed in <a href="https://developers.paymongo.com/docs/testing" target="_blank" rel="noopener noreferrer">documentation</a>.';
                     $this->description  = trim( $this->description );
                 }
-                // display the description with <p> tags etc.
+                // Display the description with <p> tags etc.
                 echo wpautop( wp_kses_post( $this->description ) );
             }
 
-            echo '<form action="" method="POST">
-                    <p style="font-size:15px;">Please select your payment method:</p>
-                    <input type="radio" id="gcash" name="paymongo_payment" value="gcash" checked>
-                    <label for="gcash" style="font-size:14px;">GCash</label><br>
-                    <input type="radio" id="grab_pay" name="paymongo_payment" value="grab_pay">
-                    <label for="card" style="font-size:14px;">Grab Pay</label><br>
-                </form>';
+            echo '<div class="form-row form-row-wide"><br>
+                    <p style="font-size:15px;">Please select your payment method:<span class="required">*</span></p>                    
+                    <label for="gcash" style="font-size:14px;">
+                        <input type="radio" id="gcash" name="e_wallet" value="gcash" checked/>
+                        GCash
+                    </label><br>                    
+                    <label for="card" style="font-size:14px;">
+                        <input type="radio" id="grab_pay" name="e_wallet" value="grab_pay"/>
+                        Grab Pay
+                    </label><br>
+                </div>
+                <div class="clear"></div>';
         }
         
         /*
@@ -165,11 +168,13 @@ function e_wallet_init_gateway_class() {
 		 */
 		public function process_payment( $order_id ) {
             // Get order details
-            $order = wc_get_order( $order_id );            
-            
-            $return_url = $this->get_return_url( $order );
+            $order = wc_get_order( $order_id );                        
 
-            $response = e_wallet_payment( $GLOBALS['headers'], $order, $return_url );
+            $return_url = $this->get_return_url( $order );
+    
+            $type = $_POST[ 'e_wallet' ];
+
+            $response = e_wallet_payment( $GLOBALS['headers'], $order, $return_url, $type );
 
             if( !is_wp_error( $response ) ) {
                 
@@ -207,13 +212,13 @@ function e_wallet_init_gateway_class() {
 /**
  * GCash and Grab Pay
  */
-function e_wallet_payment( $headers, $order, $return_url ) {
+function e_wallet_payment( $headers, $order, $return_url, $type ) {
     $payment_source_url = 'https://api.paymongo.com/v1/sources';
 
     $source_data = json_encode(array(
         'data' => array(
             'attributes' => array(
-                'type'      => 'gcash',
+                'type'      => $type,
                 'amount'    => $GLOBALS['test_mode'] ? 10000 : ( int )$order->get_total(),
                 'currency'  => get_woocommerce_currency(),
                 'redirect'  => array(
@@ -291,3 +296,4 @@ class WC_EWallet_Create_Payment{
         }
     }
 }
+  
