@@ -172,7 +172,14 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
             'exp_month'    => ( int )$exp_month,
             'exp_year'  => ( int )$exp_year,
             'cvc'   => ( isset( $_POST['credit_card-card-cvc'] ) ) ? $_POST['credit_card-card-cvc'] : '',
-        ];
+        ];        
+
+        foreach ( $card_payload as $key => $detail ) {            
+            if ( ! $detail) {
+                wc_add_notice( str_replace('_', ' ',$key).' is required.', 'error' );
+                return;
+            }
+        }
 
         $intent_id = cc_payment_intent( $order );
         $method_id = cc_payment_method( $intent_id, $card_payload, $order );
