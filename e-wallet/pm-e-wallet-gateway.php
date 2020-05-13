@@ -172,22 +172,30 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
 
         if( !is_wp_error( $response ) ) {
 
-            $body = json_decode( $response['body'], true );
+            $body = json_decode( $response['body'], true );            
 
-            $source_id = $body['data']['id'];
+            if ( ! isset($body['errors'] ) ) {
+                $source_id = $body['data']['id'];
 
-            session_start();
-            $_SESSION['source_id'] = $source_id;                
+                session_start();
+                $_SESSION['source_id'] = $source_id;
+                        
 
-            if ( $body['data']['attributes']['status'] == 'pending') {
-                // Redirect payment gateway
-                return array(
-                    'result' => 'success',
-                    'redirect' => $body['data']['attributes']['redirect']['checkout_url']
-                );
-            } else {
-                wc_add_notice(  'Please try again.', 'error' );
-                return;
+                if ( $body['data']['attributes']['status'] == 'pending' ) {
+                    // Redirect payment gateway
+                    return array(
+                        'result' => 'success',
+                        'redirect' => $body['data']['attributes']['redirect']['checkout_url']
+                    );
+                } else {
+                    wc_add_notice(  'Please try again.', 'error' );
+                    return;
+                }
+             } else {
+                 foreach( $body['errors'] as $error  ) {                     
+                     wc_add_notice( $error['detail'], 'error' );
+                 }                 
+                 return;
             }
 
         } else {
@@ -203,12 +211,14 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
  * Paymongo e-wallet post request to authorize GCash or Grab Pay payment
  * 
  * @param array $headers authorization and content type header for post request
- * @param object $order Woocommerce global object for order details
+ * @param object $order Woocommerce object for order details
  * @param string $return_url Woocommerce default thank you URL
  * @param string $type Paymongo payment type gcash or grab_pay
  */
 function e_wallet_payment( $headers, $order, $return_url, $type ) {
-    $payment_source_url = 'https://api.paymongo.com/v1/sources';
+    $payment_source_url = 'https://api.paymongo.com/v1/sources';    
+
+    $customer_name = $order->get_billing_first_name().' '.$order->get_billing_last_name();
 
     $source_data = json_encode([
         'data' => [
@@ -216,13 +226,26 @@ function e_wallet_payment( $headers, $order, $return_url, $type ) {
                 'type'      => $type,
                 'amount'    => $GLOBALS['test_mode'] ? 10000 : ( int )$order->get_total(),
                 'currency'  => get_woocommerce_currency(),
+                'billing'   => [
+                    'address' => [
+                        'line1'         => $order->get_billing_address_1(),
+                        'line2'         => $order->get_billing_address_2(),
+                        'city'          => $order->get_billing_city(),
+                        'state'         => $order->get_billing_state(),
+                        'county'        => $order->get_billing_country(),
+                        'postal_code'   => $order->get_billing_postcode(),
+                    ],
+                    'name'  => $customer_name,
+                    'email' => $order->get_billing_email(),
+                ],
+                'phone' => $order->get_billing_phone(),
                 'redirect'  => [
                     'success'   => $return_url,
-                    'failed'    => wc_get_checkout_url()
-                ]
+                    'failed'    => wc_get_checkout_url(),
+                ],                
             ]
         ]
-    ]);
+    ]);    
             
     // Array with parameters for API interaction
     $source_payload = array(                                

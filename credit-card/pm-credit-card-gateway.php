@@ -175,7 +175,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
         ];
 
         $intent_id = cc_payment_intent( $order );
-        $method_id = cc_payment_method( $intent_id, $card_payload );
+        $method_id = cc_payment_method( $intent_id, $card_payload, $order );
 
         // Validation of payment method
         if ( isset( $method_id[0]['code'] ) ) {
@@ -285,15 +285,31 @@ function cc_payment_intent( $order ) {
  * 
  * @param string $intent_id id from payment intent
  * @param array $card_payload consumer's credit card info
+ * @param object $order Woocommerce object for order details
  */
-function cc_payment_method( $intent_id, $card_payload ) {
+function cc_payment_method( $intent_id, $card_payload, $order ) {
     $payment_method_url = 'https://api.paymongo.com/v1/payment_methods';
+
+    $customer_name = $order->get_billing_first_name().' '.$order->get_billing_last_name();
 
     $method_data = json_encode( [
         'data' => [
             'attributes' => [
                 'type'      => 'card',
-                'details'   => $card_payload
+                'details'   => $card_payload,
+                'billing'   => [
+                    'address' => [
+                        'line1'         => $order->get_billing_address_1(),
+                        'line2'         => $order->get_billing_address_2(),
+                        'city'          => $order->get_billing_city(),
+                        'state'         => $order->get_billing_state(),
+                        'county'        => $order->get_billing_country(),
+                        'postal_code'   => $order->get_billing_postcode(),
+                    ],
+                    'name'  => $customer_name,
+                    'email' => $order->get_billing_email(),
+                ],
+                'phone' => $order->get_billing_phone(),
             ]
         ]
     ]);
