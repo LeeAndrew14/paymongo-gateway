@@ -1,12 +1,12 @@
 <?php
 /*
- * Note: It is inside plugins_loaded action hook
+ * Paymongo Credit Card Class
  */
 class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
     /**
      * Class constructor
-    */
+     */
     public function __construct() {
 
         $this->id = 'credit_card'; // payment gateway plugin ID
@@ -59,7 +59,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
     /**
      * Plugin options
-    */
+     */
     public function init_form_fields(){
 
         $desc = '';
@@ -126,8 +126,8 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
     }
 
     /*
-    * Custom CSS and JS, in most cases required only for custom credit card form
-    */
+     * Custom CSS and JS, in most cases required only for custom credit card form
+     */
     public function payment_scripts() {
         // no reason to enqueue JavaScript if API keys are not set
         if ( empty( $this->private_key ) || empty( $this->publishable_key ) ) {
@@ -141,8 +141,8 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
     }
 
     /*
-    * Fields validation
-    */
+     * Fields validation
+     */
     public function validate_fields() {
 
         if( empty( $_POST[ 'billing_first_name' ]) ) {
@@ -154,8 +154,8 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
     }
 
     /*
-    * Process payment here
-    */
+     * Process payment here
+     */
     public function process_payment( $order_id ) {
 
         global $woocommerce;
@@ -176,8 +176,6 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
         $intent_id = cc_payment_intent( $order );
         $method_id = cc_payment_method( $intent_id, $card_payload );
-
-        print_r($method_id);
 
         // Validation of payment method
         if ( isset( $method_id[0]['code'] ) ) {
@@ -234,6 +232,16 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
     }
 }
 
+/**
+ * cc_payment_intent 
+ * 
+ * Paymongo PaymentIntent resource is used to track and handle different 
+ * states of the payment until it succeeds.
+ * 
+ * more info @: https://bit.ly/2ThauOb
+ * 
+ * @param object $order to get total amount of order 
+ */
 function cc_payment_intent( $order ) {
     $payment_intent_url = 'https://api.paymongo.com/v1/payment_intents';
 
@@ -268,6 +276,16 @@ function cc_payment_intent( $order ) {
     }
 }
 
+/**
+ * cc_payment_method
+ * 
+ * PaymentMethod resource describes which payment method was used to fulfill a payment
+ * 
+ * more info @: https://bit.ly/2xY7LSd
+ * 
+ * @param string $intent_id id from payment intent
+ * @param array $card_payload consumer's credit card info
+ */
 function cc_payment_method( $intent_id, $card_payload ) {
     $payment_method_url = 'https://api.paymongo.com/v1/payment_methods';
 
@@ -296,6 +314,14 @@ function cc_payment_method( $intent_id, $card_payload ) {
     }
 }
 
+/**
+ * payment_attach
+ * 
+ * attaching PaymentIntent to finalize payment
+ * 
+ * @param string $method_id id from payment method
+ * @param string $intent_id id from payment intent
+ */
 function payment_attach( $method_id, $intent_id ) {
     $payment_attached_url = 'https://api.paymongo.com/v1/payment_intents/'.$intent_id.'/attach';
 

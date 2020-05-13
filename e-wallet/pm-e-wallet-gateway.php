@@ -1,12 +1,12 @@
 <?php
 /*
- * Note: It is inside plugins_loaded action hook
+ * Paymongo E-Wallet Class
  */
 class WC_EWallet_Gateway extends WC_Payment_Gateway {
 
     /**
      * Class constructor
-    */
+     */
     public function __construct() {
 
         $this->id = 'e_wallet'; // payment gateway plugin ID
@@ -52,7 +52,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
 
     /**
      * Plugin options
-    */
+     */
     public function init_form_fields(){
 
         $desc = '';
@@ -147,8 +147,8 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
     }
     
     /*
-    * Custom CSS and JS, in most cases required only for custom credit card form
-    */
+     * Custom CSS and JS, in most cases required only for custom credit card form
+     */
     public function payment_scripts() {
     
         // no reason to enqueue JavaScript if API keys are not set
@@ -158,8 +158,8 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
     }
 
     /*
-    * Process payment here
-    */
+     * Process payment here
+     */
     public function process_payment( $order_id ) {
         // Get order details
         $order = wc_get_order( $order_id );                        
@@ -171,11 +171,11 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
         $response = e_wallet_payment( $GLOBALS['headers'], $order, $return_url, $type );
 
         if( !is_wp_error( $response ) ) {
-            
+
             $body = json_decode( $response['body'], true );
-            
+
             $source_id = $body['data']['id'];
-            
+
             session_start();
             $_SESSION['source_id'] = $source_id;                
 
@@ -185,12 +185,11 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
                     'result' => 'success',
                     'redirect' => $body['data']['attributes']['redirect']['checkout_url']
                 );
-                
             } else {
                 wc_add_notice(  'Please try again.', 'error' );
                 return;
             }
-    
+
         } else {
             wc_add_notice(  'Connection error.', 'error' );
             return;
@@ -199,24 +198,31 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
 }
 
 /**
- * GCash and Grab Pay
+ * e_wallet_payment
+ * 
+ * Paymongo e-wallet post request to authorize GCash or Grab Pay payment
+ * 
+ * @param array $headers authorization and content type header for post request
+ * @param object $order Woocommerce global object for order details
+ * @param string $return_url Woocommerce default thank you URL
+ * @param string $type Paymongo payment type gcash or grab_pay
  */
 function e_wallet_payment( $headers, $order, $return_url, $type ) {
     $payment_source_url = 'https://api.paymongo.com/v1/sources';
 
-    $source_data = json_encode(array(
-        'data' => array(
-            'attributes' => array(
+    $source_data = json_encode([
+        'data' => [
+            'attributes' => [
                 'type'      => $type,
                 'amount'    => $GLOBALS['test_mode'] ? 10000 : ( int )$order->get_total(),
                 'currency'  => get_woocommerce_currency(),
-                'redirect'  => array(
+                'redirect'  => [
                     'success'   => $return_url,
                     'failed'    => wc_get_checkout_url()
-                )
-            )
-        )
-    ), JSON_FORCE_OBJECT);
+                ]
+            ]
+        ]
+    ]);
             
     // Array with parameters for API interaction
     $source_payload = array(                                
@@ -230,6 +236,9 @@ function e_wallet_payment( $headers, $order, $return_url, $type ) {
     return $response;
 }
 
+/**
+ * Finalize order after GCash or Grab pay payment process
+ */
 add_action( 'woocommerce_thankyou', array('WC_EWallet_Create_Payment', 'ewallet_create_payment') );
 class WC_EWallet_Create_Payment{
     public static function ewallet_create_payment( $order_id ) {
@@ -242,39 +251,39 @@ class WC_EWallet_Create_Payment{
 
         session_start();
 
-        $payment_data = json_encode(array(
-            'data' => array(
-                'attributes' => array(
+        $payment_data = json_encode([
+            'data' => [
+                'attributes' => [
                     'description'           => 'Barapido Mart Payment',
                     'statement_descriptor'  => 'Barapido Mart payment of product orders',
                     'amount'                => $GLOBALS['test_mode'] ? 10000 : (int)$order->get_total(),
                     'currency'              => get_woocommerce_currency(),
-                    'source' => array(
+                    'source' => [
                         'id'    => $_SESSION['source_id'],
                         'type'  => 'source'
-                    )
-                )
-            )
-        ), JSON_FORCE_OBJECT);        
+                    ]
+                ]
+            ]
+        ]);
 
         $payment_payload = array(
             'headers'   => $GLOBALS['headers'],
             'body'      => $payment_data
         );
-                
-        $payment = wp_remote_post($payment_url, $payment_payload);        
+
+        $payment = wp_remote_post($payment_url, $payment_payload);
 
         $body = json_decode( $payment['body'], true );
-        
+
         if ( !isset( $body['errors'] ) ) {
             $status = $body['data']['attributes']['status'];
-        
+
             if ( $status == 'paid') {
                 // Payment received
                 $order->payment_complete();
-                
+
                 wc_reduce_stock_levels($order_id);
-                        
+
                 // some notes to customer (replace true with false to make it private)
                 $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
 
@@ -284,4 +293,3 @@ class WC_EWallet_Create_Payment{
         }
     }
 }
-  
