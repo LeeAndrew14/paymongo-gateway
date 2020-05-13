@@ -16,15 +16,15 @@ function e_wallet_init_gateway_class() {
             $this->has_fields = true; // in case custom credit card form is needed
             $this->method_title = 'E-Wallet';
             $this->method_description = 'For GCash and Grab Pay payment method';
-         
+
             // Payments types
             $this->supports = array(
                 'products'
             );
-         
+
             // Method with all the options fields
             $this->init_form_fields();
-         
+
             // Load settings.
             $this->init_settings();
             $this->icon = $this->get_option( 'icon' );
@@ -34,7 +34,7 @@ function e_wallet_init_gateway_class() {
             $this->testmode = 'yes' === $this->get_option( 'testmode' );
             $this->private_key = $this->testmode ? $this->get_option( 'test_private_key' ) : $this->get_option( 'private_key' );
             $this->publishable_key = $this->testmode ? $this->get_option( 'test_publishable_key' ) : $this->get_option( 'publishable_key' );
-            
+
             // Global values            
             $GLOBALS['private_key'] = $this->testmode ? $this->get_option( 'test_private_key' ) : $this->get_option( 'private_key' );
             $GLOBALS['test_mode'] = $this->testmode = 'yes' === $this->get_option( 'testmode' );
@@ -278,7 +278,6 @@ class WC_EWallet_Create_Payment{
         $payment = wp_remote_post($payment_url, $payment_payload);        
 
         $body = json_decode( $payment['body'], true );
-        
         
         if ( !isset( $body['errors'] ) ) {
             $status = $body['data']['attributes']['status'];
