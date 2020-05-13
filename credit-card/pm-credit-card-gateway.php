@@ -2,230 +2,236 @@
 /*
  * Note: It is inside plugins_loaded action hook
  */
-add_action( 'plugins_loaded', 'credit_card_init_gateway_class' );
-function credit_card_init_gateway_class() {
- 
-	class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
- 
- 		/**
- 		 * Class constructor
- 		 */
- 		public function __construct() {
- 
-            $this->id = 'credit_card'; // payment gateway plugin ID
-            $this->has_fields = true; // in case custom credit card form is needed
-            $this->method_title = 'Credit/Debit Card';
-            $this->method_description = 'For different form of card payments';
+class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
-            // Payments types
-            $this->supports = array(
-                'default_credit_card_form',
-                'product'
-            );
+    /**
+     * Class constructor
+    */
+    public function __construct() {
 
-            // Card fields
-            $this->has_fields = true;
+        $this->id = 'credit_card'; // payment gateway plugin ID
+        $this->has_fields = true; // in case custom credit card form is needed
+        $this->method_title = 'Credit/Debit Card';
+        $this->method_description = 'For different form of card payments';
 
-            // Method with all the options fields
-            $this->init_form_fields();
+        // Payments types
+        $this->supports = array(
+            'default_credit_card_form',
+            'product'
+        );
 
-            // Load settings.
-            $this->init_settings();
-            $this->icon = $this->get_option( 'icon', '' );
-            $this->title = $this->get_option( 'title' );
-            $this->description = $this->get_option( 'description' );
-            $this->enabled = $this->get_option( 'enabled' );
-            $this->testmode = 'yes' === $this->get_option( 'testmode' );
-            $this->private_key = $this->testmode ? $this->get_option( 'test_private_key' ) : $this->get_option( 'private_key' );
-            $this->publishable_key = $this->testmode ? $this->get_option( 'test_publishable_key' ) : $this->get_option( 'publishable_key' );
+        // Card fields
+        $this->has_fields = true;
 
-            // Global values
-            $GLOBALS['private_key'] = $this->testmode ? $this->get_option( 'test_private_key' ) : $this->get_option( 'private_key' );
-            $GLOBALS['test_mode'] = $this->testmode = 'yes' === $this->get_option( 'testmode' );
+        // Method with all the options fields
+        $this->init_form_fields();
 
-            $GLOBALS['headers'] = array(
-                'Authorization' => 'Basic ' . base64_encode( $this->private_key ),
-                'Content-Type'  => 'application/json',
-                'timeout'       => 50,
-            );
+        // Load settings.
+        $this->init_settings();
+        $this->icon = $this->get_option( 'icon', '' );
+        $this->title = $this->get_option( 'title' );
+        $this->description = $this->get_option( 'description' );
+        $this->enabled = $this->get_option( 'enabled' );
+        $this->testmode = 'yes' === $this->get_option( 'testmode' );
+        $this->private_key = $this->testmode ? $this->get_option( 'test_private_key' ) : $this->get_option( 'private_key' );
+        $this->publishable_key = $this->testmode ? $this->get_option( 'test_publishable_key' ) : $this->get_option( 'publishable_key' );
 
-            // Saves the settings
-            add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
+        $test_message = 'TEST MODE ENABLED. In test mode, you can use the card numbers listed in <a href="https://developers.paymongo.com/docs/testing" target="_blank" rel="noopener noreferrer">documentation</a>.';
 
-            // Use to obtain token, not used for now
-            add_action( 'wp_enqueue_scripts', array( $this, 'payment_scripts' ) );
+        $this->description = $this->testmode ? $test_message : $this->get_option( 'description' );
 
-            // Register a webhook here
-            add_action( 'woocommerce_api_{webhook name}', array( $this, 'webhook' ) );
- 		}
- 
-		/**
- 		 * Plugin options
- 		 */
- 		public function init_form_fields(){
+        // Global values
+        $GLOBALS['private_key'] = $this->testmode ? $this->get_option( 'test_private_key' ) : $this->get_option( 'private_key' );
+        $GLOBALS['test_mode'] = $this->testmode = 'yes' === $this->get_option( 'testmode' );
 
-            $desc = '';
-            $icon_url = $this->get_option( 'icon', '' );
-            if ( $icon_url !== '' ) {
-                $desc = '<img src="' . $icon_url . '" alt="' . $this->title . '" title="' . $this->title . '" />';
-            }
- 
-            $this->form_fields = array(
-                'enabled' => array(
-                    'title'       => 'Enable/Disable',
-                    'label'       => 'Enable PayMongo Gateway',
-                    'type'        => 'checkbox',
-                    'description' => '',
-                    'default'     => 'no'
-                ),
-                'title' => array(
-                    'title'       => 'Title',
-                    'type'        => 'text',
-                    'description' => 'This controls the title which the user sees during checkout.',
-                    'default'     => 'PayMongo',
-                    'desc_tip'    => true,
-                ),
-                'description' => array(
-                    'title'       => 'Description',
-                    'type'        => 'textarea',
-                    'description' => 'This controls the description which the user sees during checkout.',
-                    'default'     => 'Pay using PayMongo',
-                ),
-                'icon' => array(
-                    'title'       => 'Icon',
-                    'type'        => 'text',
-                    'desc_tip'    => 'If you want to show an image next to the gateway\'s name on the frontend, enter a URL to an image.',
-                    'default'     => '',
-                    'description' => $desc,
-                    'css'         => 'min-width:300px;width:50%;',
-                ),
-                'testmode' => array(
-                    'title'       => 'Test mode',
-                    'label'       => 'Enable Test Mode',
-                    'type'        => 'checkbox',
-                    'description' => 'Place the payment gateway in test mode using test API keys.',
-                    'default'     => 'yes',
-                    'desc_tip'    => true,
-                ),
-                'test_publishable_key' => array(
-                    'title'       => 'Test Publishable Key',
-                    'type'        => 'text'
-                ),
-                'test_private_key' => array(
-                    'title'       => 'Test Private Key',
-                    'type'        => 'text',
-                ),
-                'publishable_key' => array(
-                    'title'       => 'Live Publishable Key',
-                    'type'        => 'text'
-                ),
-                'private_key' => array(
-                    'title'       => 'Live Private Key',
-                    'type'        => 'text'
-                )
-            );
- 
-	 	}
+        $GLOBALS['headers'] = array(
+            'Authorization' => 'Basic ' . base64_encode( $this->private_key ),
+            'Content-Type'  => 'application/json',
+            'timeout'       => 50,
+        );
 
-		/*
-		 * Custom CSS and JS, in most cases required only for custom credit card form
-		 */
-	 	public function payment_scripts() {
-            // no reason to enqueue JavaScript if API keys are not set
-            if ( empty( $this->private_key ) || empty( $this->publishable_key ) ) {
-                return;
-            }
+        // Saves the settings
+        add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
 
-            // do not work with card details without SSL unless website is in a test mode
-            if ( ! $this->testmode && ! is_ssl() ) {
-                return;
-            }
-	 	}
- 
-		/*
- 		 * Fields validation
-		 */
-		public function validate_fields() {
+        // Use to obtain token, not used for now
+        add_action( 'wp_enqueue_scripts', array( $this, 'payment_scripts' ) );
+    }
 
-            if( empty( $_POST[ 'billing_first_name' ]) ) {
-                wc_add_notice(  'First name is required!', 'error' );
-                return false;
-            }
-            return true;
+    /**
+     * Plugin options
+    */
+    public function init_form_fields(){
 
-		}
- 
-		/*
-		 * Process payment here
-		 */
-		public function process_payment( $order_id ) {
+        $desc = '';
+        $icon_url = $this->get_option( 'icon', '' );
+        if ( $icon_url !== '' ) {
+            $desc = '<img src="' . $icon_url . '" alt="' . $this->title . '" title="' . $this->title . '" />';
+        }
 
-            global $woocommerce;
+        $this->form_fields = array(
+            'enabled' => array(
+                'title'       => 'Enable/Disable',
+                'label'       => 'Enable PayMongo Gateway',
+                'type'        => 'checkbox',
+                'description' => '',
+                'default'     => 'no'
+            ),
+            'title' => array(
+                'title'       => 'Title',
+                'type'        => 'text',
+                'description' => 'This controls the title which the user sees during checkout.',
+                'default'     => 'PayMongo',
+                'desc_tip'    => true,
+            ),
+            'description' => array(
+                'title'       => 'Description',
+                'type'        => 'textarea',
+                'description' => 'This controls the description which the user sees during checkout.',
+                'default'     => 'Pay using PayMongo',
+            ),
+            'icon' => array(
+                'title'       => 'Icon',
+                'type'        => 'text',
+                'desc_tip'    => 'If you want to show an image next to the gateway\'s name on the frontend, enter a URL to an image.',
+                'default'     => '',
+                'description' => $desc,
+                'css'         => 'min-width:300px;width:50%;',
+            ),
+            'testmode' => array(
+                'title'       => 'Test mode',
+                'label'       => 'Enable Test Mode',
+                'type'        => 'checkbox',
+                'description' => 'Place the payment gateway in test mode using test API keys.',
+                'default'     => 'yes',
+                'desc_tip'    => true,
+            ),
+            'test_publishable_key' => array(
+                'title'       => 'Test Publishable Key',
+                'type'        => 'text'
+            ),
+            'test_private_key' => array(
+                'title'       => 'Test Private Key',
+                'type'        => 'text',
+            ),
+            'publishable_key' => array(
+                'title'       => 'Live Publishable Key',
+                'type'        => 'text'
+            ),
+            'private_key' => array(
+                'title'       => 'Live Private Key',
+                'type'        => 'text'
+            )
+        );
 
-            // Get order details
-            $order = wc_get_order( $order_id );
+    }
 
-            $return_url = $this->get_return_url( $order );
+    /*
+    * Custom CSS and JS, in most cases required only for custom credit card form
+    */
+    public function payment_scripts() {
+        // no reason to enqueue JavaScript if API keys are not set
+        if ( empty( $this->private_key ) || empty( $this->publishable_key ) ) {
+            return;
+        }
 
-            list($exp_month, $_, $exp_year) = explode( ' ', $_POST['credit_card-card-expiry'] );
+        // do not work with card details without SSL unless website is in a test mode
+        if ( ! $this->testmode && ! is_ssl() ) {
+            return;
+        }
+    }
 
-            $card_payload = [
-                'card_number'    => str_replace( array(' ', '-' ), '', $_POST['credit_card-card-number'] ),
-                'exp_month'    => ( int )$exp_month,
-                'exp_year'  => ( int )$exp_year,
-                'cvc'   => ( isset( $_POST['credit_card-card-cvc'] ) ) ? $_POST['credit_card-card-cvc'] : '',
-            ];
+    /*
+    * Fields validation
+    */
+    public function validate_fields() {
 
-            $intent_id = cc_payment_intent( $order );
-            $method_id = cc_payment_method( $intent_id, $card_payload );
+        if( empty( $_POST[ 'billing_first_name' ]) ) {
+            wc_add_notice(  'First name is required!', 'error' );
+            return false;
+        }
+        return true;
 
-            // Validation of payment method
-            if ( isset( $method_id[0]['code'] ) ) {
-                $error_code = $method_id[0]['code'];
+    }
 
-                if ( $error_code == 'parameter_format_invalid' ) {
-                    wc_add_notice(  'Credit card format is invalid.', 'error' );
-                } else if ( $error_code == 'parameter_invalid' ) {
-                    $attribute = $method_id[0]['source']['attribute'];
+    /*
+    * Process payment here
+    */
+    public function process_payment( $order_id ) {
 
-                    if ( $attribute == 'exp_month' ) {
-                        wc_add_notice(  'Credit card month must be between 1 and 12.', 'error' );
-                    } else if ( $attribute == 'exp_year' ) {
-                        wc_add_notice(  'Credit card year must be at least this year or no later than 50 years from now.', 'error' );
-                    }
-                } else if ( $error_code == 'parameter_above_maximum' ) {
-                    wc_add_notice(  'The value for CVC cannot be more than 3 characters', 'error' );
+        global $woocommerce;
+
+        // Get order details
+        $order = wc_get_order( $order_id );
+
+        $return_url = $this->get_return_url( $order );
+
+        list($exp_month, $_, $exp_year) = explode( ' ', $_POST['credit_card-card-expiry'] );
+
+        $card_payload = [
+            'card_number'    => str_replace( array(' ', '-' ), '', $_POST['credit_card-card-number'] ),
+            'exp_month'    => ( int )$exp_month,
+            'exp_year'  => ( int )$exp_year,
+            'cvc'   => ( isset( $_POST['credit_card-card-cvc'] ) ) ? $_POST['credit_card-card-cvc'] : '',
+        ];
+
+        $intent_id = cc_payment_intent( $order );
+        $method_id = cc_payment_method( $intent_id, $card_payload );
+
+        print_r($method_id);
+
+        // Validation of payment method
+        if ( isset( $method_id[0]['code'] ) ) {
+            $error_code = $method_id[0]['code'];
+
+            if ( $error_code == 'parameter_format_invalid' ) {
+                wc_add_notice(  'Credit card format is invalid.', 'error' );
+            } else if ( $error_code == 'parameter_invalid' ) {
+                $attribute = $method_id[0]['source']['attribute'];
+
+                if ( $attribute == 'exp_month' ) {
+                    wc_add_notice(  'Credit card month must be between 1 and 12.', 'error' );
+                } else if ( $attribute == 'exp_year' ) {
+                    wc_add_notice(  'Credit card year must be at least this year or no later than 50 years from now.', 'error' );
                 }
+            } else if ( $error_code == 'parameter_above_maximum' ) {
+                wc_add_notice(  'The value for CVC cannot be more than 3 characters', 'error' );
+            } else if ( $error_code == 'parameter_below_minimum' ) {
+                wc_add_notice(  'The value for CVC cannot be less than 3 characters', 'error' );
             }
+        }
 
-            $response = payment_attach( $method_id, $intent_id );
+        $response = payment_attach( $method_id, $intent_id );
 
-            if( !is_wp_error( $response ) ) {
+        if( !is_wp_error( $response ) ) {
 
-                $body = $response['data']['attributes']['status'];
+            $body = $response['data']['attributes']['status'];
 
-                if ( $body == 'succeeded' ) {
-                    // Redirect to the thank you page
-                    return array(
-                        'result' => 'success',
-                        'redirect' => $this->get_return_url( $order )
-                    );
+            if ( $body == 'succeeded' ) {
+                // Payment received
+                $order->payment_complete();
+                
+                wc_reduce_stock_levels($order_id);
+                        
+                // some notes to customer (replace true with false to make it private)
+                $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
 
-                } else {
-                    wc_add_notice(  'Please try again.', 'error' );
-                    return;
-                }
+                // Empty cart
+                $woocommerce->cart->empty_cart();
 
+                // Redirect to the thank you page
+                return array(
+                    'result' => 'success',
+                    'redirect' => $this->get_return_url( $order )
+                );
             } else {
-                wc_add_notice(  'Connection error.', 'error' );
+                wc_add_notice(  'Please try again.', 'error' );
                 return;
             }
-	 	}
- 
-		public function webhook() {
- 
-	 	}
- 	}
+        } else {
+            wc_add_notice(  'Connection error.', 'error' );
+            return;
+        }
+    }
 }
 
 function cc_payment_intent( $order ) {
@@ -236,7 +242,7 @@ function cc_payment_intent( $order ) {
             'attributes' => [
                 'amount'                    => $GLOBALS['test_mode'] ? 10000 : ( int )$order->get_total(),
                 'payment_method_allowed'    => ['card'],
-                'description'               => 'Barapido Mard Payment',
+                'description'               => 'Barapido Mart Payment',
                 'statement_descriptor'      => 'Barapido Mart product payment',
                 'payment_method_options'    => [
                     'card' => ['request_three_d_secure' => 'automatic']
