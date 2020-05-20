@@ -40,16 +40,6 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
         $this->description = $this->testmode ? $test_message : $this->get_option( 'description' );
 
-        // Global values
-        $GLOBALS['private_key'] = $this->testmode ? $this->get_option( 'test_private_key' ) : $this->get_option( 'private_key' );
-        $GLOBALS['test_mode'] = $this->testmode = 'yes' === $this->get_option( 'testmode' );
-
-        $GLOBALS['headers'] = array(
-            'Authorization' => 'Basic ' . base64_encode( $this->private_key ),
-            'Content-Type'  => 'application/json',
-            'timeout'       => 50,
-        );
-
         // Saves the settings
         add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
 
@@ -174,6 +164,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
             'cvc'   => ( isset( $_POST['credit_card-card-cvc'] ) ) ? $_POST['credit_card-card-cvc'] : '',
         ];        
 
+        // Card detail validation
         foreach ( $card_payload as $key => $detail ) {            
             if ( ! $detail) {
                 wc_add_notice( str_replace('_', ' ',$key).' is required.', 'error' );
@@ -181,8 +172,14 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
             }
         }
 
-        $intent_id = cc_payment_intent( $order );
-        $method_id = cc_payment_method( $intent_id, $card_payload, $order );
+        $headers = array(
+            'Authorization' => 'Basic ' . base64_encode( $this->private_key ),
+            'Content-Type'  => 'application/json',
+            'timeout'       => 50,
+        );
+
+        $intent_id = cc_payment_intent( $order, $headers );
+        $method_id = cc_payment_method( $intent_id, $card_payload, $order, $headers );
 
         // Validation of payment method
         if ( isset( $method_id[0]['code'] ) ) {
@@ -205,7 +202,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
             }
         }
 
-        $response = payment_attach( $method_id, $intent_id );
+        $response = payment_attach( $method_id, $intent_id, $headers );
 
         if( !is_wp_error( $response ) ) {
 
@@ -249,13 +246,21 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
  * 
  * @param object $order to get total amount of order 
  */
-function cc_payment_intent( $order ) {
+function cc_payment_intent( $order, $headers ) {
     $payment_intent_url = 'https://api.paymongo.com/v1/payment_intents';
+
+    $total = $order->get_total() * 100;
+
+    // A positive integer with minimum amount of 10000. 10000 is the smallest unit in cents. More info: https://bit.ly/2Tny5ga
+    if ( $total < 10000 ) {  
+        wc_add_notice(  'Minimum transaction should be equal or higher than 100 PHP', 'error' );
+        return;
+    }
 
     $intent_data = json_encode( [
         'data' => [
             'attributes' => [
-                'amount'                    => $GLOBALS['test_mode'] ? 10000 : ( int )$order->get_total(),
+                'amount'                    => $total,
                 'payment_method_allowed'    => ['card'],
                 'description'               => 'Barapido Mart Payment',
                 'statement_descriptor'      => 'Barapido Mart product payment',
@@ -268,7 +273,7 @@ function cc_payment_intent( $order ) {
     ]);
 
     $intent_payload = array(
-        'headers'   => $GLOBALS['headers'],
+        'headers'   => $headers,
         'body'      => $intent_data,
     );
 
@@ -294,7 +299,7 @@ function cc_payment_intent( $order ) {
  * @param array $card_payload consumer's credit card info
  * @param object $order Woocommerce object for order details
  */
-function cc_payment_method( $intent_id, $card_payload, $order ) {
+function cc_payment_method( $intent_id, $card_payload, $order, $headers ) {
     $payment_method_url = 'https://api.paymongo.com/v1/payment_methods';
 
     $customer_name = $order->get_billing_first_name().' '.$order->get_billing_last_name();
@@ -322,7 +327,7 @@ function cc_payment_method( $intent_id, $card_payload, $order ) {
     ]);
 
     $method_payload = array(
-        'headers'   => $GLOBALS['headers'],
+        'headers'   => $headers,
         'body'      => $method_data,
     );
 
@@ -345,7 +350,7 @@ function cc_payment_method( $intent_id, $card_payload, $order ) {
  * @param string $method_id id from payment method
  * @param string $intent_id id from payment intent
  */
-function payment_attach( $method_id, $intent_id ) {
+function payment_attach( $method_id, $intent_id, $headers ) {
     $payment_attached_url = 'https://api.paymongo.com/v1/payment_intents/'.$intent_id.'/attach';
 
     $attach_data = json_encode( [
@@ -358,7 +363,7 @@ function payment_attach( $method_id, $intent_id ) {
     ]);
 
     $attach_payload = [
-        'headers'   => $GLOBALS['headers'],
+        'headers'   => $headers,
         'body'      => $attach_data,
     ];
 

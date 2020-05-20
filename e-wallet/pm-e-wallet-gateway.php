@@ -34,17 +34,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
 
         $test_message = 'TEST MODE ENABLED. In test mode, you can use the card numbers listed in <a href="https://developers.paymongo.com/docs/testing" target="_blank" rel="noopener noreferrer">documentation</a>.';
 
-        $this->description = $this->testmode ? $test_message : $this->get_option( 'description' );
-
-        // Global values            
-        $GLOBALS['private_key'] = $this->testmode ? $this->get_option( 'test_private_key' ) : $this->get_option( 'private_key' );
-        $GLOBALS['test_mode'] = $this->testmode = 'yes' === $this->get_option( 'testmode' );
-
-        $GLOBALS['headers'] = array(
-            'Authorization' => 'Basic ' . base64_encode( $this->private_key ),
-            'Content-Type'  => 'application/json',
-            'timeout'       => 50,
-        );
+        $this->description = $this->testmode ? $test_message : $this->get_option( 'description' );        
 
         // Saves the settings
         add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
@@ -168,7 +158,13 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
 
         $type = $_POST[ 'e_wallet' ];
 
-        $response = e_wallet_payment( $GLOBALS['headers'], $order, $return_url, $type );
+        $headers = array(
+            'Authorization' => 'Basic ' . base64_encode( $this->private_key ),
+            'Content-Type'  => 'application/json',
+            'timeout'       => 50,
+        );
+
+        $response = e_wallet_payment( $headers, $order, $return_url, $type );
 
         if( !is_wp_error( $response ) ) {
 
@@ -179,7 +175,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
 
                 session_start();
                 $_SESSION['source_id'] = $source_id;
-                        
+                $_SESSION['private_key'] = $this->private_key;
 
                 if ( $body['data']['attributes']['status'] == 'pending' ) {
                     // Redirect payment gateway
@@ -220,11 +216,19 @@ function e_wallet_payment( $headers, $order, $return_url, $type ) {
 
     $customer_name = $order->get_billing_first_name().' '.$order->get_billing_last_name();
 
+    $total = $order->get_total() * 100;
+
+    // A positive integer with minimum amount of 10000. 10000 is the smallest unit in cents. More info: https://bit.ly/2Tny5ga
+    if ( $total < 10000 ) {  
+        wc_add_notice(  'Minimum transaction should be equal or higher than 100 PHP', 'error' );
+        return;
+    }
+
     $source_data = json_encode([
         'data' => [
             'attributes' => [
                 'type'      => $type,
-                'amount'    => $GLOBALS['test_mode'] ? 10000 : ( int )$order->get_total(),
+                'amount'    => $total,
                 'currency'  => get_woocommerce_currency(),
                 'billing'   => [
                     'address' => [
@@ -279,7 +283,7 @@ class WC_EWallet_Create_Payment{
                 'attributes' => [
                     'description'           => 'Barapido Mart Payment',
                     'statement_descriptor'  => 'Barapido Mart payment of product orders',
-                    'amount'                => $GLOBALS['test_mode'] ? 10000 : (int)$order->get_total(),
+                    'amount'                => $order->get_total() * 100,
                     'currency'              => get_woocommerce_currency(),
                     'source' => [
                         'id'    => $_SESSION['source_id'],
@@ -289,8 +293,14 @@ class WC_EWallet_Create_Payment{
             ]
         ]);
 
+        $headers = array(
+            'Authorization' => 'Basic ' . base64_encode( $_SESSION['private_key'] ),
+            'Content-Type'  => 'application/json',
+            'timeout'       => 50,
+        );
+
         $payment_payload = array(
-            'headers'   => $GLOBALS['headers'],
+            'headers'   => $headers,
             'body'      => $payment_data
         );
 
