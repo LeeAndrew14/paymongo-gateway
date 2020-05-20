@@ -308,14 +308,14 @@ class WC_EWallet_Create_Payment{
 
         $body = json_decode( $payment['body'], true );
 
-        if ( !isset( $body['errors'] ) ) {
+        if ( ! isset( $body['errors'] ) ) {
             $status = $body['data']['attributes']['status'];
 
-            if ( $status == 'paid') {
+            if ( $status == 'paid' ) {
                 // Payment received
                 $order->payment_complete();
 
-                wc_reduce_stock_levels($order_id);
+                wc_reduce_stock_levels( $order_id );
 
                 // some notes to customer (replace true with false to make it private)
                 $order->add_order_note( 'Hey, your order is paid! Thank you!', true );

@@ -166,8 +166,8 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
         // Card detail validation
         foreach ( $card_payload as $key => $detail ) {            
-            if ( ! $detail) {
-                wc_add_notice( str_replace('_', ' ',$key).' is required.', 'error' );
+            if ( ! $detail ) {
+                wc_add_notice( str_replace( '_', ' ', $key ).' is required.', 'error' );
                 return;
             }
         }
@@ -204,7 +204,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
         $response = payment_attach( $method_id, $intent_id, $headers );
 
-        if( !is_wp_error( $response ) ) {
+        if( ! is_wp_error( $response ) ) {
 
             $body = $response['data']['attributes']['status'];
 
@@ -212,7 +212,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
                 // Payment received
                 $order->payment_complete();
                 
-                wc_reduce_stock_levels($order_id);
+                wc_reduce_stock_levels( $order_id );
                         
                 // some notes to customer (replace true with false to make it private)
                 $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
@@ -244,7 +244,8 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
  * 
  * more info @: https://bit.ly/2ThauOb
  * 
- * @param object $order to get total amount of order 
+ * @param object $order to get total amount of order
+ * @param array $headers authorization and content type header for post request
  */
 function cc_payment_intent( $order, $headers ) {
     $payment_intent_url = 'https://api.paymongo.com/v1/payment_intents';
@@ -298,6 +299,7 @@ function cc_payment_intent( $order, $headers ) {
  * @param string $intent_id id from payment intent
  * @param array $card_payload consumer's credit card info
  * @param object $order Woocommerce object for order details
+ * @param array $headers authorization and content type header for post request
  */
 function cc_payment_method( $intent_id, $card_payload, $order, $headers ) {
     $payment_method_url = 'https://api.paymongo.com/v1/payment_methods';
@@ -333,7 +335,7 @@ function cc_payment_method( $intent_id, $card_payload, $order, $headers ) {
 
     $method = wp_remote_post( $payment_method_url, $method_payload );
 
-    $body = json_decode( $method['body'], true);
+    $body = json_decode( $method['body'], true );
 
     if ( ! isset( $body['errors'] ) ) {
         return $body['data']['id'];
@@ -349,6 +351,7 @@ function cc_payment_method( $intent_id, $card_payload, $order, $headers ) {
  * 
  * @param string $method_id id from payment method
  * @param string $intent_id id from payment intent
+ * @param array $headers authorization and content type header for post request
  */
 function payment_attach( $method_id, $intent_id, $headers ) {
     $payment_attached_url = 'https://api.paymongo.com/v1/payment_intents/'.$intent_id.'/attach';
@@ -369,7 +372,7 @@ function payment_attach( $method_id, $intent_id, $headers ) {
 
     $attach = wp_remote_post( $payment_attached_url, $attach_payload );
 
-    $body = json_decode( $attach['body'], true);
+    $body = json_decode( $attach['body'], true );
 
     if ( ! isset( $body['errors'] ) ) {
         return $body;
