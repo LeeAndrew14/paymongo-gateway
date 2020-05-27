@@ -155,7 +155,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
         $return_url = $this->get_return_url( $order );
 
-        list($exp_month, $_, $exp_year) = explode( ' ', $_POST['credit_card-card-expiry'] );
+        list( $exp_month, $_, $exp_year ) = explode( ' ', $_POST['credit_card-card-expiry'] );
 
         $card_payload = [
             'card_number'    => str_replace( array(' ', '-' ), '', $_POST['credit_card-card-number'] ),
@@ -180,57 +180,37 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
         $intent_id = cc_payment_intent( $order, $headers );
         $method_id = cc_payment_method( $intent_id, $card_payload, $order, $headers );
-
-        // Validation of payment method
-        if ( isset( $method_id[0]['code'] ) ) {
-            $error_code = $method_id[0]['code'];
-
-            if ( $error_code == 'parameter_format_invalid' ) {
-                wc_add_notice(  'Credit card format is invalid.', 'error' );
-            } else if ( $error_code == 'parameter_invalid' ) {
-                $attribute = $method_id[0]['source']['attribute'];
-
-                if ( $attribute == 'exp_month' ) {
-                    wc_add_notice(  'Credit card month must be between 1 and 12.', 'error' );
-                } else if ( $attribute == 'exp_year' ) {
-                    wc_add_notice(  'Credit card year must be at least this year or no later than 50 years from now.', 'error' );
-                }
-            } else if ( $error_code == 'parameter_above_maximum' ) {
-                wc_add_notice(  'The value for CVC cannot be more than 3 characters', 'error' );
-            } else if ( $error_code == 'parameter_below_minimum' ) {
-                wc_add_notice(  'The value for CVC cannot be less than 3 characters', 'error' );
-            }
-        }
-
         $response = payment_attach( $method_id, $intent_id, $headers );
 
-        if( ! is_wp_error( $response ) ) {
+        if ( in_array( 'api_error', [$intent_id, $method_id, $response ] ) )  {
+            wc_add_notice( 'Something went wrong while placing your order. <br> Please try again.', 'error' );
+            return;
+        } else if ( in_array( 'connection_error' , [$intent_id, $method_id, $response ] ) ) {
+            wc_add_notice( 'Connection error. <br> Please try again.', 'error' );
+            return;
+        }
+        
+        $body = $response['data']['attributes']['status'];
 
-            $body = $response['data']['attributes']['status'];
+        if ( $body == 'succeeded' ) {
+            // Payment received
+            $order->payment_complete();
+            
+            wc_reduce_stock_levels( $order_id );
+                    
+            // some notes to customer (replace true with false to make it private)
+            $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
 
-            if ( $body == 'succeeded' ) {
-                // Payment received
-                $order->payment_complete();
-                
-                wc_reduce_stock_levels( $order_id );
-                        
-                // some notes to customer (replace true with false to make it private)
-                $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
+            // Empty cart
+            $woocommerce->cart->empty_cart();
 
-                // Empty cart
-                $woocommerce->cart->empty_cart();
-
-                // Redirect to the thank you page
-                return array(
-                    'result' => 'success',
-                    'redirect' => $this->get_return_url( $order )
-                );
-            } else {
-                wc_add_notice(  'Please try again.', 'error' );
-                return;
-            }
+            // Redirect to the thank you page
+            return array(
+                'result' => 'success',
+                'redirect' => $return_url
+            );
         } else {
-            wc_add_notice(  'Connection error.', 'error' );
+            wc_add_notice(  'Please try again.', 'error' );
             return;
         }
     }
@@ -279,13 +259,17 @@ function cc_payment_intent( $order, $headers ) {
     );
 
     $intent = wp_remote_post( $payment_intent_url, $intent_payload );
+    
+    if ( ! is_wp_error( $intent ) ) {
+        $body = json_decode( $intent['body'], true );
 
-    $body = json_decode( $intent['body'], true );
-
-    if ( ! isset( $body['errors'] ) ) {
-        return $body['data']['id'];
-    } else {
-        return $body;
+        if ( ! isset( $body['errors'] ) ) {
+            return $body['data']['id'];
+        } else {            
+            return 'api_error';
+        }
+    } else {        
+        return 'connection_error';
     }
 }
 
@@ -335,12 +319,37 @@ function cc_payment_method( $intent_id, $card_payload, $order, $headers ) {
 
     $method = wp_remote_post( $payment_method_url, $method_payload );
 
-    $body = json_decode( $method['body'], true );
+    if ( ! is_wp_error( $method ) ) {
+        $body = json_decode( $method['body'], true );
 
-    if ( ! isset( $body['errors'] ) ) {
-        return $body['data']['id'];
-    } else {
-        return $body['errors'];
+        if ( ! isset( $body['errors'] ) ) {
+            return $body['data']['id'];
+        } else {
+            // Validation of payment method
+            if ( isset( $body['errors'][0]['code'] ) ) {
+                $error_code = $body['errors'][0]['code'];
+
+                if ( $error_code == 'parameter_format_invalid' ) {
+                    wc_add_notice(  'Credit card format is invalid.', 'error' );
+                } else if ( $error_code == 'parameter_invalid' ) {
+                    $attribute = $body['errors'][0]['source']['attribute'];
+
+                    if ( $attribute == 'exp_month' ) {
+                        wc_add_notice(  'Credit card month must be between 1 and 12.', 'error' );
+                    } else if ( $attribute == 'exp_year' ) {
+                        wc_add_notice(  'Credit card year must be at least this year or no later than 50 years from now.', 'error' );
+                    }
+                } else if ( $error_code == 'parameter_above_maximum' ) {
+                    wc_add_notice(  'The value for CVC cannot be more than 3 characters.', 'error' );
+                } else if ( $error_code == 'parameter_below_minimum' ) {
+                    wc_add_notice(  'The value for CVC cannot be less than 3 characters.', 'error' );                    
+                }
+            } else {
+                return 'api_error';
+            }
+        }
+    } else {        
+        return 'connection_error';
     }
 }
 
@@ -372,11 +381,15 @@ function payment_attach( $method_id, $intent_id, $headers ) {
 
     $attach = wp_remote_post( $payment_attached_url, $attach_payload );
 
-    $body = json_decode( $attach['body'], true );
+    if ( ! is_wp_error( $attach ) ) {
+        $body = json_decode( $attach['body'], true );
 
-    if ( ! isset( $body['errors'] ) ) {
-        return $body;
+        if ( ! isset( $body['errors'] ) ) {
+            return $body;
+        } else {        
+            return 'api_error';
+        }
     } else {        
-        return $body['errors'];
+        return 'connection_error';
     }
 }

@@ -273,6 +273,11 @@ class WC_EWallet_Create_Payment{
         global $woocommerce;
 
         $order = wc_get_order( $order_id );
+        $status = $order->get_status();
+
+        if ( $status == 'processing' ) {
+            return;
+        }
 
         $payment_url = 'https://api.paymongo.com/v1/payments';
 
@@ -304,25 +309,49 @@ class WC_EWallet_Create_Payment{
             'body'      => $payment_data
         );
 
-        $payment = wp_remote_post($payment_url, $payment_payload);
+        $response = wp_remote_post($payment_url, $payment_payload);
 
-        $body = json_decode( $payment['body'], true );
+        if ( ! is_wp_error( $response ) ) {
+            $body = json_decode( $response['body'], true );
 
-        if ( ! isset( $body['errors'] ) ) {
-            $status = $body['data']['attributes']['status'];
+            if ( isset( $body['errors'] ) ) {
+                wp_redirect( wc_get_checkout_url() );
+            } else {
+                $status = $body['data']['attributes']['status'];
 
-            if ( $status == 'paid' ) {
-                // Payment received
-                $order->payment_complete();
+                if ( $status == 'paid' ) {
+                    // Payment received
+                    $order->payment_complete();
 
-                wc_reduce_stock_levels( $order_id );
+                    wc_reduce_stock_levels( $order_id );
 
-                // some notes to customer (replace true with false to make it private)
-                $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
+                    // some notes to customer (replace true with false to make it private)
+                    $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
 
-                // Empty cart
-                $woocommerce->cart->empty_cart();
+                    // Empty cart
+                    $woocommerce->cart->empty_cart();
+
+                    session_destroy();
+                }
             }
         }
+    }
+}
+
+/**
+ * Prompt error message if e-wallet transaction failed
+ */
+add_action( 'woocommerce_thankyou', ['Error_Message', 'payment_error_message'] );
+class Error_Message {
+    public static function payment_error_message( $order_id ) {
+        
+        $order = wc_get_order( $order_id );
+        $status = $order->get_status();
+
+        if ( $status == 'processing' ) {
+            return;
+        } else {
+            wc_add_notice( __( 'Something went wrong while processing your order. Please try again', 'woocommerce' ), 'error' );
+        }        
     }
 }
