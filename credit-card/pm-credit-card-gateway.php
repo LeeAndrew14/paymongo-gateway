@@ -1,5 +1,5 @@
 <?php
-/*
+/**
  * Paymongo Credit Card Class
  */
 class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
@@ -15,8 +15,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
         $this->method_description = 'For different form of card payments';
 
         // Payments types
-        $this->supports = array(
-            'default_credit_card_form',
+        $this->supports = array(            
             'product'
         );
 
@@ -115,7 +114,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
     }
 
-    /*
+    /**
      * Custom CSS and JS, in most cases required only for custom credit card form
      */
     public function payment_scripts() {
@@ -130,7 +129,18 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
         }
     }
 
-    /*
+    /**
+     * Customize credit card payment field here
+     */
+    public function payment_fields() {
+
+        $cc_form = new WC_Payment_Gateway_CC();
+        $cc_form->id = $this->id;
+        $cc_form->supports = $this->supports;
+        $cc_form->form();
+    }
+
+    /**
      * Fields validation
      */
     public function validate_fields() {
