@@ -71,6 +71,12 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
                 'type'        => 'textarea',
                 'description' => 'This controls the description which the user sees during checkout.',
                 'default'     => 'Pay using PayMongo',
+            ),'payment_description' => array(
+                'title'       => 'Payment Description',
+                'type'        => 'text',
+                'description' => 'This controls the description which the merchant sees in Paymongo dashboard.',
+                'default'     => 'Warara',
+                'desc_tip'    => true,
             ),
             'icon' => array(
                 'title'       => 'Icon',
@@ -152,11 +158,10 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
      */
     public function process_payment( $order_id ) {
         // Get order details
-        $order = wc_get_order( $order_id );                        
-
-        $return_url = $this->get_return_url( $order );
-
         $type = $_POST[ 'e_wallet' ];
+        $order = wc_get_order( $order_id );    
+        $return_url = $this->get_return_url( $order );
+        $payment_desc = $this->get_option( 'payment_description' ) ? $this->get_option( 'payment_description' ) : ' ';
 
         $headers = array(
             'Authorization' => 'Basic ' . base64_encode( $this->private_key ),
@@ -176,6 +181,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
                 session_start();
                 $_SESSION['source_id'] = $source_id;
                 $_SESSION['private_key'] = $this->private_key;
+                $_SESSION['payment_desc'] = $payment_desc;
 
                 if ( $body['data']['attributes']['status'] == 'pending' ) {
                     // Redirect payment gateway
@@ -193,7 +199,6 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
                  }                 
                  return;
             }
-
         } else {
             wc_add_notice(  'Connection error.', 'error' );
             return;
@@ -286,8 +291,8 @@ class WC_EWallet_Create_Payment{
         $payment_data = json_encode([
             'data' => [
                 'attributes' => [
-                    'description'           => 'Barapido Mart Payment',
-                    'statement_descriptor'  => 'Barapido Mart payment of product orders',
+                    'description'           => $_SESSION['payment_desc'],
+                    'statement_descriptor'  => $_SESSION['payment_desc'],
                     'amount'                => $order->get_total() * 100,
                     'currency'              => get_woocommerce_currency(),
                     'source' => [

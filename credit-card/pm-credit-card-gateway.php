@@ -77,6 +77,11 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
                 'type'        => 'textarea',
                 'description' => 'This controls the description which the user sees during checkout.',
                 'default'     => 'Pay using PayMongo',
+            ),'payment_description' => array(
+                'title'       => 'Payment Description',
+                'type'        => 'text',
+                'description' => 'This controls the description which the merchant sees in Paymongo dashboard.',                
+                'desc_tip'    => true,
             ),
             'icon' => array(
                 'title'       => 'Icon',
@@ -162,8 +167,8 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
         // Get order details
         $order = wc_get_order( $order_id );
-
         $return_url = $this->get_return_url( $order );
+        $payment_desc = $this->get_option( 'payment_description' ) ? $this->get_option( 'payment_description' ) : ' ';
 
         list( $exp_month, $_, $exp_year ) = explode( ' ', $_POST['credit_card-card-expiry'] );
 
@@ -188,14 +193,14 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
             'timeout'       => 50,
         );
 
-        $intent_id = cc_payment_intent( $order, $headers );
+        $intent_id = cc_payment_intent( $order, $headers, $payment_desc );
         $method_id = cc_payment_method( $intent_id, $card_payload, $order, $headers );
         $response = payment_attach( $method_id, $intent_id, $headers );
 
-        if ( in_array( 'api_error', [$intent_id, $method_id, $response ] ) )  {
+        if ( in_array( 'api_error', [$intent_id, $method_id, $response] ) )  {
             wc_add_notice( 'Something went wrong while placing your order. <br> Please try again.', 'error' );
             return;
-        } else if ( in_array( 'connection_error' , [$intent_id, $method_id, $response ] ) ) {
+        } else if ( in_array( 'connection_error' , [$intent_id, $method_id, $response] ) ) {
             wc_add_notice( 'Connection error. <br> Please try again.', 'error' );
             return;
         }
@@ -237,7 +242,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
  * @param object $order to get total amount of order
  * @param array $headers authorization and content type header for post request
  */
-function cc_payment_intent( $order, $headers ) {
+function cc_payment_intent( $order, $headers, $payment_desc ) {
     $payment_intent_url = 'https://api.paymongo.com/v1/payment_intents';
 
     $total = $order->get_total() * 100;
@@ -253,8 +258,8 @@ function cc_payment_intent( $order, $headers ) {
             'attributes' => [
                 'amount'                    => $total,
                 'payment_method_allowed'    => ['card'],
-                'description'               => 'Barapido Mart Payment',
-                'statement_descriptor'      => 'Barapido Mart product payment',
+                'description'               => $payment_desc,
+                'statement_descriptor'      => $payment_desc,
                 'payment_method_options'    => [
                     'card' => ['request_three_d_secure' => 'automatic']
                 ],
