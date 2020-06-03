@@ -49,7 +49,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
     /**
      * Plugin options
      */
-    public function init_form_fields(){
+    public function init_form_fields() {
 
         $desc = '';
         $icon_url = $this->get_option( 'icon', '' );
@@ -150,12 +150,12 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
      */
     public function validate_fields() {
 
-        if( empty( $_POST[ 'billing_first_name' ]) ) {
+        if ( empty( $_POST[ 'billing_first_name' ]) ) {
             wc_add_notice(  'First name is required!', 'error' );
             return false;
         }
+        
         return true;
-
     }
 
     /*
@@ -197,9 +197,14 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
         $method_id = cc_payment_method( $intent_id, $card_payload, $order, $headers );
         $response = payment_attach( $method_id, $intent_id, $headers );
 
-        if ( in_array( 'api_error', [$intent_id, $method_id, $response] ) )  {
-            wc_add_notice( 'Something went wrong while placing your order. <br> Please try again.', 'error' );
-            return;
+        if ( in_array( 'api_error', [$intent_id, $method_id, $response] ) ) {
+            if ( is_array( $method_id ) ) {
+                wc_add_notice( $method_id[1], $method_id[2] );
+                return;
+            } else {
+                wc_add_notice( 'Something went wrong while placing your order. <br> Please try again.', 'error' );
+                return;
+            }            
         } else if ( in_array( 'connection_error' , [$intent_id, $method_id, $response] ) ) {
             wc_add_notice( 'Connection error. <br> Please try again.', 'error' );
             return;
@@ -241,6 +246,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
  * 
  * @param object $order to get total amount of order
  * @param array $headers authorization and content type header for post request
+ * @param string $payment_desc Paymongo payment dashboard description
  */
 function cc_payment_intent( $order, $headers, $payment_desc ) {
     $payment_intent_url = 'https://api.paymongo.com/v1/payment_intents';
@@ -345,19 +351,19 @@ function cc_payment_method( $intent_id, $card_payload, $order, $headers ) {
                 $error_code = $body['errors'][0]['code'];
 
                 if ( $error_code == 'parameter_format_invalid' ) {
-                    wc_add_notice(  'Credit card format is invalid.', 'error' );
+                    return ['api_error', 'Credit card format is invalid.', 'error'];
                 } else if ( $error_code == 'parameter_invalid' ) {
-                    $attribute = $body['errors'][0]['source']['attribute'];
+                    $attribute = $body['errors'][0]['source']['attribute'];                    
 
                     if ( $attribute == 'exp_month' ) {
-                        wc_add_notice(  'Credit card month must be between 1 and 12.', 'error' );
+                        return ['api_error', 'Credit card month must be between 1 and 12.', 'error'];
                     } else if ( $attribute == 'exp_year' ) {
-                        wc_add_notice(  'Credit card year must be at least this year or no later than 50 years from now.', 'error' );
+                        return ['api_error', 'Credit card year must be at least this year or no later than 50 years from now.', 'error'];
                     }
                 } else if ( $error_code == 'parameter_above_maximum' ) {
-                    wc_add_notice(  'The value for CVC cannot be more than 3 characters.', 'error' );
+                    return ['api_error', 'The value for CVC cannot be more than 3 characters.', 'error'];
                 } else if ( $error_code == 'parameter_below_minimum' ) {
-                    wc_add_notice(  'The value for CVC cannot be less than 3 characters.', 'error' );                    
+                    return ['api_error', 'The value for CVC cannot be less than 3 characters.', 'error'];
                 }
             } else {
                 return 'api_error';

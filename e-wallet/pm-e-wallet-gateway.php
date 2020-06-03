@@ -74,8 +74,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
             ),'payment_description' => array(
                 'title'       => 'Payment Description',
                 'type'        => 'text',
-                'description' => 'This controls the description which the merchant sees in Paymongo dashboard.',
-                'default'     => 'Warara',
+                'description' => 'This controls the description which the merchant sees in Paymongo dashboard.',                
                 'desc_tip'    => true,
             ),
             'icon' => array(
@@ -200,7 +199,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
                  return;
             }
         } else {
-            wc_add_notice(  'Connection error.', 'error' );
+            wc_add_notice(  'Connection error. <br> Please try again.', 'error' );
             return;
         }
     }
