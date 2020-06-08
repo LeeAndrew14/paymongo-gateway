@@ -170,7 +170,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
 
         $response = e_wallet_payment( $headers, $order, $return_url, $type );
 
-        if( !is_wp_error( $response ) ) {
+        if ( !is_wp_error( $response ) ) {
 
             $body = json_decode( $response['body'], true );            
 
@@ -313,12 +313,16 @@ class WC_EWallet_Create_Payment{
             'body'      => $payment_data
         );
 
-        $response = wp_remote_post($payment_url, $payment_payload);
+        $response = wp_remote_post( $payment_url, $payment_payload );
 
         if ( ! is_wp_error( $response ) ) {
             $body = json_decode( $response['body'], true );
 
             if ( isset( $body['errors'] ) ) {
+                $order->add_order_note( 'Something went wrong while processing this order, please check woocommerce logs', true );
+
+                wc_get_logger()->add( 'paymongo-gateway', 'E-Wallet '.wc_print_r( $response['body'], true ) );
+
                 wp_redirect( wc_get_checkout_url() );
             } else {
                 $status = $body['data']['attributes']['status'];
@@ -355,7 +359,8 @@ class Error_Message {
         if ( $status == 'processing' ) {
             return;
         } else {
-            wc_add_notice( __( 'Something went wrong while processing your order. Please try again', 'woocommerce' ), 'error' );
+            wc_add_notice( __( 'Something went wrong while processing your order, don\'t worry no charges has been made.
+                <br> Kindly try again or try using a different payment mode.', 'woocommerce' ), 'error' );
         }        
     }
 }

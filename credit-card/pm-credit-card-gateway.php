@@ -139,10 +139,15 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
      */
     public function payment_fields() {
 
+        if ( $this->description ) {
+            // Display the description with <p> tags etc.
+            echo wpautop( wp_kses_post( $this->description ) );
+        }
+
         $cc_form = new WC_Payment_Gateway_CC();
         $cc_form->id = $this->id;
         $cc_form->supports = $this->supports;
-        $cc_form->form();
+        $cc_form->form();        
     }
 
     /**
@@ -162,6 +167,8 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
      * Process payment here
      */
     public function process_payment( $order_id ) {
+
+        $this->description = $this->testmode ? $test_message : $this->get_option( 'description' );
 
         global $woocommerce;
 
@@ -194,18 +201,32 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
         );
 
         $intent_id = cc_payment_intent( $order, $headers, $payment_desc );
+
+        $error_message = 'There was a problem with your payment, kindly try again or try using a different payment mode.';
+
+        if ( $intent_id == 'api_error' ) {
+            wc_add_notice( $error_message, 'error' );
+            return;
+        }
+
         $method_id = cc_payment_method( $intent_id, $card_payload, $order, $headers );
+
+        if ( is_array( $method_id ) ) {
+            wc_add_notice( $method_id[1], $method_id[2] );
+            return;
+        } else if ( $method_id == 'api_error' ) {
+            wc_add_notice( $error_message, 'error' );
+            return;
+        }
+
         $response = payment_attach( $method_id, $intent_id, $headers );
 
-        if ( in_array( 'api_error', [$intent_id, $method_id, $response] ) ) {
-            if ( is_array( $method_id ) ) {
-                wc_add_notice( $method_id[1], $method_id[2] );
-                return;
-            } else {
-                wc_add_notice( 'Something went wrong while placing your order. <br> Please try again.', 'error' );
-                return;
-            }            
-        } else if ( in_array( 'connection_error' , [$intent_id, $method_id, $response] ) ) {
+        if ( $response == 'api_error' ) {
+            wc_add_notice( $error_message, 'error' );
+            return;
+        }
+
+        if ( in_array( 'connection_error' , [$intent_id, $method_id, $response] ) ) {
             wc_add_notice( 'Connection error. <br> Please try again.', 'error' );
             return;
         }
@@ -283,11 +304,17 @@ function cc_payment_intent( $order, $headers, $payment_desc ) {
     
     if ( ! is_wp_error( $intent ) ) {
         $body = json_decode( $intent['body'], true );
+        
+        if ( $body == NULL ) {
+            wc_get_logger()->add( 'paymongo-gateway', 'Payment Intent '.wc_print_r( $intent['response'], true ) );
 
-        if ( ! isset( $body['errors'] ) ) {
-            return $body['data']['id'];
-        } else {            
             return 'api_error';
+        } else if ( isset( $body['errors'] ) ) {            
+            wc_get_logger()->add( 'paymongo-gateway', 'Payment Intent '.wc_print_r( $intent['body'], true ) );
+
+            return 'api_error';            
+        } else {            
+            return $body['data']['id'];
         }
     } else {        
         return 'connection_error';
@@ -339,15 +366,18 @@ function cc_payment_method( $intent_id, $card_payload, $order, $headers ) {
     );
 
     $method = wp_remote_post( $payment_method_url, $method_payload );
-
+    
     if ( ! is_wp_error( $method ) ) {
         $body = json_decode( $method['body'], true );
+        
+        if ( $body == NULL ) {
+            wc_get_logger()->add( 'paymongo-gateway', 'Payment Method '.wc_print_r( $method['response'], true ) );
 
-        if ( ! isset( $body['errors'] ) ) {
-            return $body['data']['id'];
-        } else {
+            return 'api_error';
+        }
+        if ( isset( $body['errors'] ) ) {            
             // Validation of payment method
-            if ( isset( $body['errors'][0]['code'] ) ) {
+            if ( isset( $body['errors'][0]['code'] ) ) {                
                 $error_code = $body['errors'][0]['code'];
 
                 if ( $error_code == 'parameter_format_invalid' ) {
@@ -364,12 +394,20 @@ function cc_payment_method( $intent_id, $card_payload, $order, $headers ) {
                     return ['api_error', 'The value for CVC cannot be more than 3 characters.', 'error'];
                 } else if ( $error_code == 'parameter_below_minimum' ) {
                     return ['api_error', 'The value for CVC cannot be less than 3 characters.', 'error'];
+                } else {
+                    wc_get_logger()->add( 'paymongo-gateway', 'Payment Method '.wc_print_r( $method['body'], true ) );
+
+                    return 'api_error';
                 }
             } else {
+                wc_get_logger()->add( 'paymongo-gateway', 'Payment Method '.wc_print_r( $method['body'], true ) );
+
                 return 'api_error';
             }
+        } else {
+            return $body['data']['id'];
         }
-    } else {        
+    } else {
         return 'connection_error';
     }
 }
@@ -401,14 +439,20 @@ function payment_attach( $method_id, $intent_id, $headers ) {
     ];
 
     $attach = wp_remote_post( $payment_attached_url, $attach_payload );
-
+    
     if ( ! is_wp_error( $attach ) ) {
         $body = json_decode( $attach['body'], true );
+        
+        if ( $body == NULL ) {            
+            wc_get_logger()->add( 'paymongo-gateway', 'Payment Attach '.wc_print_r( $attach['response'], true ) );
 
-        if ( ! isset( $body['errors'] ) ) {
-            return $body;
-        } else {        
             return 'api_error';
+        } else if ( isset( $body['errors'] ) ) {            
+            wc_get_logger()->add( 'paymongo-gateway', 'Payment Attach '.wc_print_r( $attach['body'], true ) );
+
+            return 'api_error';            
+        } else {
+            return $body;
         }
     } else {        
         return 'connection_error';
