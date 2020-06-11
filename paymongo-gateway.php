@@ -11,6 +11,9 @@
 /*
  * Registers Paymongo class as a WooCommerce payment gateway
  */
+
+defined( 'ABSPATH' ) or die( 'No script kiddies please!' );
+
 add_filter( 'woocommerce_payment_gateways', 'paymongo_gateway_init' );
 function paymongo_gateway_init( $gateways ) {
 
