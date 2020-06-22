@@ -1,5 +1,5 @@
 # Paymongo Payment Gateway for Woocommerce
-(experimental WIP)
+(experimental WIP) :warning: **3D secure payments not supported!**:
 
 Integration of Paymongo payment gateway for Woocommerce
 
@@ -42,5 +42,3 @@ but for now Paymongo does not require tokenized payload
 
 
 Then your're all good!
-
-:warning: **3D secure not currently supported**: Be very careful here!
