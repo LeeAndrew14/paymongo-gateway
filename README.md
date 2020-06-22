@@ -42,3 +42,5 @@ but for now Paymongo does not require tokenized payload
 
 
 Then your're all good!
+
+:warning: **3D secure not currently supported**: Be very careful here!
