@@ -1,5 +1,5 @@
 # Paymongo Payment Gateway for Woocommerce
-(experimental WIP) :warning: **3D secure payments not supported!**:
+(experimental WIP) :warning: **3D secure payments not supported!**
 
 Integration of Paymongo payment gateway for Woocommerce
 
