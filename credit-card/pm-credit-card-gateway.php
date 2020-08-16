@@ -1,5 +1,5 @@
 <?php
-/*
+/**
  * Paymongo Credit Card Class
  */
 class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
@@ -15,8 +15,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
         $this->method_description = 'For different form of card payments';
 
         // Payments types
-        $this->supports = array(
-            'default_credit_card_form',
+        $this->supports = array(            
             'product'
         );
 
@@ -42,15 +41,14 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
         // Saves the settings
         add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
-
-        // Use to obtain token, not used for now
+        
         add_action( 'wp_enqueue_scripts', array( $this, 'payment_scripts' ) );
     }
 
     /**
      * Plugin options
      */
-    public function init_form_fields(){
+    public function init_form_fields() {
 
         $desc = '';
         $icon_url = $this->get_option( 'icon', '' );
@@ -78,6 +76,11 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
                 'type'        => 'textarea',
                 'description' => 'This controls the description which the user sees during checkout.',
                 'default'     => 'Pay using PayMongo',
+            ),'payment_description' => array(
+                'title'       => 'Payment Description',
+                'type'        => 'text',
+                'description' => 'This controls the description which the merchant sees in Paymongo dashboard.',                
+                'desc_tip'    => true,
             ),
             'icon' => array(
                 'title'       => 'Icon',
@@ -115,7 +118,7 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
 
     }
 
-    /*
+    /**
      * Custom CSS and JS, in most cases required only for custom credit card form
      */
     public function payment_scripts() {
@@ -128,34 +131,51 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
         if ( ! $this->testmode && ! is_ssl() ) {
             return;
         }
+
+        wp_register_script( 'woocommerce_paymongo', plugins_url( 'paymongo-gateway/assets/js/paymongo.js' ) );
     }
 
-    /*
+    /**
+     * Customize credit card payment field here
+     */
+    public function payment_fields() {
+
+        if ( $this->description ) {
+            // Display the description with <p> tags etc.
+            echo wpautop( wp_kses_post( $this->description ) );
+        }
+
+        $cc_form = new WC_Payment_Gateway_CC();
+        $cc_form->id = $this->id;
+        $cc_form->supports = $this->supports;
+        $cc_form->form();
+    }
+
+    /**
      * Fields validation
      */
     public function validate_fields() {
 
-        if( empty( $_POST[ 'billing_first_name' ]) ) {
+        if ( empty( $_POST[ 'billing_first_name' ]) ) {
             wc_add_notice(  'First name is required!', 'error' );
             return false;
         }
+        
         return true;
-
     }
 
     /*
      * Process payment here
      */
     public function process_payment( $order_id ) {
-
         global $woocommerce;
 
         // Get order details
         $order = wc_get_order( $order_id );
-
         $return_url = $this->get_return_url( $order );
+        $payment_desc = $this->get_option( 'payment_description' ) ? $this->get_option( 'payment_description' ) : ' ';
 
-        list($exp_month, $_, $exp_year) = explode( ' ', $_POST['credit_card-card-expiry'] );
+        list( $exp_month, $_, $exp_year ) = explode( ' ', $_POST['credit_card-card-expiry'] );
 
         $card_payload = [
             'card_number'    => str_replace( array(' ', '-' ), '', $_POST['credit_card-card-number'] ),
@@ -178,59 +198,77 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
             'timeout'       => 50,
         );
 
-        $intent_id = cc_payment_intent( $order, $headers );
+        $intent_id = cc_payment_intent( $order, $headers, $payment_desc );
+
+        $error_message = 'There was a problem with your payment, kindly try again or try using a different payment mode.';
+
+        if ( $intent_id == 'api_error' ) {
+            wc_add_notice( $error_message, 'error' );
+            return;
+        }
+
         $method_id = cc_payment_method( $intent_id, $card_payload, $order, $headers );
 
-        // Validation of payment method
-        if ( isset( $method_id[0]['code'] ) ) {
-            $error_code = $method_id[0]['code'];
-
-            if ( $error_code == 'parameter_format_invalid' ) {
-                wc_add_notice(  'Credit card format is invalid.', 'error' );
-            } else if ( $error_code == 'parameter_invalid' ) {
-                $attribute = $method_id[0]['source']['attribute'];
-
-                if ( $attribute == 'exp_month' ) {
-                    wc_add_notice(  'Credit card month must be between 1 and 12.', 'error' );
-                } else if ( $attribute == 'exp_year' ) {
-                    wc_add_notice(  'Credit card year must be at least this year or no later than 50 years from now.', 'error' );
-                }
-            } else if ( $error_code == 'parameter_above_maximum' ) {
-                wc_add_notice(  'The value for CVC cannot be more than 3 characters', 'error' );
-            } else if ( $error_code == 'parameter_below_minimum' ) {
-                wc_add_notice(  'The value for CVC cannot be less than 3 characters', 'error' );
-            }
+        if ( is_array( $method_id ) ) {
+            wc_add_notice( $method_id[0], $method_id[1] );
+            return;
+        } else if ( $method_id == 'api_error' ) {
+            wc_add_notice( $error_message, 'error' );
+            return;
         }
 
         $response = payment_attach( $method_id, $intent_id, $headers );
 
-        if( ! is_wp_error( $response ) ) {
+        if ( $response == 'api_error' ) {
+            wc_add_notice( $error_message, 'error' );
+            return;
+        }
 
-            $body = $response['data']['attributes']['status'];
+        if ( in_array( 'connection_error' , [$intent_id, $method_id, $response] ) ) {
+            wc_add_notice( 'Connection error. <br> Please try again.', 'error' );
+            return;
+        }
+        
+        $payment_intent_status = $response['data']['attributes']['status'];        
 
-            if ( $body == 'succeeded' ) {
-                // Payment received
-                $order->payment_complete();
-                
-                wc_reduce_stock_levels( $order_id );
-                        
-                // some notes to customer (replace true with false to make it private)
-                $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
+        if ( $payment_intent_status == 'succeeded' ) {
+            // Payment received
+            $order->payment_complete();
+            
+            wc_reduce_stock_levels( $order_id );
+                    
+            // some notes to customer (replace true with false to make it private)
+            $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
 
-                // Empty cart
-                $woocommerce->cart->empty_cart();
+            // Empty cart
+            $woocommerce->cart->empty_cart();
 
-                // Redirect to the thank you page
-                return array(
-                    'result' => 'success',
-                    'redirect' => $this->get_return_url( $order )
-                );
-            } else {
-                wc_add_notice(  'Please try again.', 'error' );
-                return;
-            }
+            // Redirect to the thank you page
+            return array(
+                'result' => 'success',
+                'redirect' => $return_url
+            );
+        } else if ( $payment_intent_status == 'awaiting_next_action' ) {
+            $redirect_url = $response['data']['attributes']['next_action']['redirect']['url'];
+            $client_key = $response['data']['attributes']['client_key'];
+
+            session_start();
+
+            $_SESSION['3DS']            = true;
+            $_SESSION['url']            = $redirect_url;
+            $_SESSION['order_id']       = $order_id;
+            $_SESSION['intent_id']      = $intent_id;
+            $_SESSION['return_url']     = $return_url;
+            $_SESSION['client_key']     = $client_key;
+            $_SESSION['private_key']    = $this->private_key;    
+            
+            // return array(
+            //     'result' => 'success',
+            //     'redirect' => $return_url
+            // );
+            echo isset($_POST['status']);
         } else {
-            wc_add_notice(  'Connection error.', 'error' );
+            wc_add_notice( 'Please try again.', 'error' );
             return;
         }
     }
@@ -246,8 +284,9 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
  * 
  * @param object $order to get total amount of order
  * @param array $headers authorization and content type header for post request
+ * @param string $payment_desc Paymongo payment dashboard description
  */
-function cc_payment_intent( $order, $headers ) {
+function cc_payment_intent( $order, $headers, $payment_desc ) {
     $payment_intent_url = 'https://api.paymongo.com/v1/payment_intents';
 
     $total = $order->get_total() * 100;
@@ -263,8 +302,8 @@ function cc_payment_intent( $order, $headers ) {
             'attributes' => [
                 'amount'                    => $total,
                 'payment_method_allowed'    => ['card'],
-                'description'               => 'Barapido Mart Payment',
-                'statement_descriptor'      => 'Barapido Mart product payment',
+                'description'               => $payment_desc,
+                'statement_descriptor'      => $payment_desc,
                 'payment_method_options'    => [
                     'card' => ['request_three_d_secure' => 'automatic']
                 ],
@@ -278,14 +317,24 @@ function cc_payment_intent( $order, $headers ) {
         'body'      => $intent_data,
     );
 
-    $intent = wp_remote_post( $payment_intent_url, $intent_payload );
+    $intent = wp_safe_remote_post( $payment_intent_url, $intent_payload );
+    
+    if ( ! is_wp_error( $intent ) ) {
+        $body = json_decode( $intent['body'], true );
+        
+        if ( $body == NULL ) {
+            wc_get_logger()->add( 'paymongo-gateway', 'Payment Intent '.wc_print_r( $intent['response'], true ) );
 
-    $body = json_decode( $intent['body'], true );
+            return 'api_error';
+        } else if ( isset( $body['errors'] ) ) {            
+            wc_get_logger()->add( 'paymongo-gateway', 'Payment Intent '.wc_print_r( $intent['body'], true ) );
 
-    if ( ! isset( $body['errors'] ) ) {
-        return $body['data']['id'];
-    } else {
-        return $body;
+            return 'api_error';            
+        } else {            
+            return $body['data']['id'];
+        }
+    } else {        
+        return 'connection_error';
     }
 }
 
@@ -333,14 +382,50 @@ function cc_payment_method( $intent_id, $card_payload, $order, $headers ) {
         'body'      => $method_data,
     );
 
-    $method = wp_remote_post( $payment_method_url, $method_payload );
+    $method = wp_safe_remote_post( $payment_method_url, $method_payload );
+    
+    if ( ! is_wp_error( $method ) ) {
+        $body = json_decode( $method['body'], true );
 
-    $body = json_decode( $method['body'], true );
+        if ( $body == NULL ) {
+            wc_get_logger()->add( 'paymongo-gateway', 'Payment Method '.wc_print_r( $method['response'], true ) );
 
-    if ( ! isset( $body['errors'] ) ) {
-        return $body['data']['id'];
+            return 'api_error';
+        }
+        if ( isset( $body['errors'] ) ) {            
+            // Validation of payment method
+            if ( isset( $body['errors'][0]['code'] ) ) {                
+                $error_code = $body['errors'][0]['code'];
+
+                if ( $error_code == 'parameter_format_invalid' ) {
+                    return ['Credit card format is invalid.', 'error'];
+                } else if ( $error_code == 'parameter_invalid' ) {
+                    $attribute = $body['errors'][0]['source']['attribute'];                    
+
+                    if ( $attribute == 'exp_month' ) {
+                        return ['Credit card month must be between 1 and 12.', 'error'];
+                    } else if ( $attribute == 'exp_year' ) {
+                        return ['Credit card year must be at least this year or no later than 50 years from now.', 'error'];
+                    }
+                } else if ( $error_code == 'parameter_above_maximum' ) {
+                    return ['The value for CVC cannot be more than 3 characters.', 'error'];
+                } else if ( $error_code == 'parameter_below_minimum' ) {
+                    return ['The value for CVC cannot be less than 3 characters.', 'error'];
+                } else {
+                    wc_get_logger()->add( 'paymongo-gateway', 'Payment Method '.wc_print_r( $method['body'], true ) );
+
+                    return 'api_error';
+                }
+            } else {
+                wc_get_logger()->add( 'paymongo-gateway', 'Payment Method '.wc_print_r( $method['body'], true ) );
+
+                return 'api_error';
+            }
+        } else {
+            return $body['data']['id'];
+        }
     } else {
-        return $body['errors'];
+        return 'connection_error';
     }
 }
 
@@ -370,13 +455,81 @@ function payment_attach( $method_id, $intent_id, $headers ) {
         'body'      => $attach_data,
     ];
 
-    $attach = wp_remote_post( $payment_attached_url, $attach_payload );
+    $attach = wp_safe_remote_post( $payment_attached_url, $attach_payload );
+    
+    if ( ! is_wp_error( $attach ) ) {
+        $body = json_decode( $attach['body'], true );
+        
+        if ( $body == NULL ) {            
+            wc_get_logger()->add( 'paymongo-gateway', 'Payment Attach '.wc_print_r( $attach['response'], true ) );
 
-    $body = json_decode( $attach['body'], true );
+            return 'api_error';
+        } else if ( isset( $body['errors'] ) ) {            
+            wc_get_logger()->add( 'paymongo-gateway', 'Payment Attach '.wc_print_r( $attach['body'], true ) );
 
-    if ( ! isset( $body['errors'] ) ) {
-        return $body;
+            return 'api_error';            
+        } else {
+            return $body;
+        }
     } else {        
-        return $body['errors'];
+        return 'connection_error';
     }
 }
+
+add_action( 'woocommerce_review_order_before_submit', 'finalize_payment_process' );
+function finalize_payment_process( $order_id ) {        
+    session_start();
+
+    $nonce = wp_create_nonce( 'jsforwp_likes_reset' );
+    $html_file = plugins_url( 'paymongo-gateway/credit-card/paymongo_3d_secure.html' );    
+
+    if ( ! empty( $_SESSION ) ) {
+        if ( isset( $_SESSION['3DS'] ) ) {
+            wp_localize_script( 'woocommerce_paymongo', 'paymongo_params', array(
+                'key'               => $_SESSION['private_key'],
+                'url'               => $_SESSION['url'],
+                'nonce'             => $nonce,
+                'ajax_url'          => admin_url( 'admin-ajax.php' ),
+                'html_file'         => $html_file,
+                'client_key'        => $_SESSION['client_key'],
+                'return_url'        => $_SESSION['return_url'],
+                'checkout_url'      => wc_get_checkout_url(),                
+                'payment_intent_id' => $_SESSION['intent_id'],
+            ));
+            
+            wp_enqueue_script( 'woocommerce_paymongo' );   
+            session_destroy();
+        }        
+    }
+}
+
+// add_action( 'woocommerce_before_checkout_process', 'finalize_payment_process_1' );
+// function finalize_payment_process_1( $order_id ) {
+//     session_start();
+    
+//     $html_file = plugins_url( 'paymongo-gateway/credit-card/paymongo_3d_secure.html' );
+//     $url = plugins_url( __FILE__ );
+    
+//     if ( ! empty( $_SESSION ) ) {
+//         if ( isset( $_SESSION['3DS'] ) ) {
+//             wp_localize_script( 'woocommerce_paymongo', 'paymongo_params', array(
+//                 'key'               => $_SESSION['private_key'],
+//                 'url'               => $_SESSION['url'],
+//                 'p_url'             => $url,
+//                 'html_file'         => $html_file,
+//                 'client_key'        => $_SESSION['client_key'],
+//                 'return_url'        => $_SESSION['return_url'],
+//                 'checkout_url'      => wc_get_checkout_url(),                
+//                 'payment_intent_id' => $_SESSION['intent_id'],
+//             ));
+                        
+//             wp_enqueue_script( 'woocommerce_paymongo' );
+//             session_destroy();     
+//         }        
+//     }
+// }
+
+function finalize_payment_process_2() {
+    echo 'BRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR';
+}
+add_action( 'wp_ajax_finalize_payment_process_2', 'finalize_payment_process_2' );

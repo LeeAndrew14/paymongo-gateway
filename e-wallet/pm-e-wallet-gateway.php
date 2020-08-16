@@ -71,6 +71,11 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
                 'type'        => 'textarea',
                 'description' => 'This controls the description which the user sees during checkout.',
                 'default'     => 'Pay using PayMongo',
+            ),'payment_description' => array(
+                'title'       => 'Payment Description',
+                'type'        => 'text',
+                'description' => 'This controls the description which the merchant sees in Paymongo dashboard.',                
+                'desc_tip'    => true,
             ),
             'icon' => array(
                 'title'       => 'Icon',
@@ -152,11 +157,10 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
      */
     public function process_payment( $order_id ) {
         // Get order details
-        $order = wc_get_order( $order_id );                        
-
-        $return_url = $this->get_return_url( $order );
-
         $type = $_POST[ 'e_wallet' ];
+        $order = wc_get_order( $order_id );    
+        $return_url = $this->get_return_url( $order );
+        $payment_desc = $this->get_option( 'payment_description' ) ? $this->get_option( 'payment_description' ) : ' ';
 
         $headers = array(
             'Authorization' => 'Basic ' . base64_encode( $this->private_key ),
@@ -166,7 +170,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
 
         $response = e_wallet_payment( $headers, $order, $return_url, $type );
 
-        if( !is_wp_error( $response ) ) {
+        if ( !is_wp_error( $response ) ) {
 
             $body = json_decode( $response['body'], true );            
 
@@ -176,6 +180,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
                 session_start();
                 $_SESSION['source_id'] = $source_id;
                 $_SESSION['private_key'] = $this->private_key;
+                $_SESSION['payment_desc'] = $payment_desc;
 
                 if ( $body['data']['attributes']['status'] == 'pending' ) {
                     // Redirect payment gateway
@@ -193,9 +198,8 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
                  }                 
                  return;
             }
-
         } else {
-            wc_add_notice(  'Connection error.', 'error' );
+            wc_add_notice(  'Connection error. <br> Please try again.', 'error' );
             return;
         }
     }
@@ -273,6 +277,11 @@ class WC_EWallet_Create_Payment{
         global $woocommerce;
 
         $order = wc_get_order( $order_id );
+        $status = $order->get_status();
+
+        if ( $status == 'processing' ) {
+            return;
+        }
 
         $payment_url = 'https://api.paymongo.com/v1/payments';
 
@@ -281,8 +290,8 @@ class WC_EWallet_Create_Payment{
         $payment_data = json_encode([
             'data' => [
                 'attributes' => [
-                    'description'           => 'Barapido Mart Payment',
-                    'statement_descriptor'  => 'Barapido Mart payment of product orders',
+                    'description'           => $_SESSION['payment_desc'],
+                    'statement_descriptor'  => $_SESSION['payment_desc'],
                     'amount'                => $order->get_total() * 100,
                     'currency'              => get_woocommerce_currency(),
                     'source' => [
@@ -304,25 +313,54 @@ class WC_EWallet_Create_Payment{
             'body'      => $payment_data
         );
 
-        $payment = wp_remote_post($payment_url, $payment_payload);
+        $response = wp_remote_post( $payment_url, $payment_payload );
 
-        $body = json_decode( $payment['body'], true );
+        if ( ! is_wp_error( $response ) ) {
+            $body = json_decode( $response['body'], true );
 
-        if ( ! isset( $body['errors'] ) ) {
-            $status = $body['data']['attributes']['status'];
+            if ( isset( $body['errors'] ) ) {
+                $order->add_order_note( 'Something went wrong while processing this order, please check woocommerce logs', true );
 
-            if ( $status == 'paid' ) {
-                // Payment received
-                $order->payment_complete();
+                wc_get_logger()->add( 'paymongo-gateway', 'E-Wallet '.wc_print_r( $response['body'], true ) );
 
-                wc_reduce_stock_levels( $order_id );
+                wp_redirect( wc_get_checkout_url() );
+            } else {
+                $status = $body['data']['attributes']['status'];
 
-                // some notes to customer (replace true with false to make it private)
-                $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
+                if ( $status == 'paid' ) {
+                    // Payment received
+                    $order->payment_complete();
 
-                // Empty cart
-                $woocommerce->cart->empty_cart();
+                    wc_reduce_stock_levels( $order_id );
+
+                    // some notes to customer (replace true with false to make it private)
+                    $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
+
+                    // Empty cart
+                    $woocommerce->cart->empty_cart();
+
+                    session_destroy();
+                }
             }
         }
+    }
+}
+
+/**
+ * Prompt error message if e-wallet transaction failed
+ */
+add_action( 'woocommerce_thankyou', ['Error_Message', 'payment_error_message'] );
+class Error_Message {
+    public static function payment_error_message( $order_id ) {
+        
+        $order = wc_get_order( $order_id );
+        $status = $order->get_status();
+
+        if ( $status == 'processing' ) {
+            return;
+        } else {
+            wc_add_notice( __( 'Something went wrong while processing your order, don\'t worry no charges has been made.
+                <br> Kindly try again or try using a different payment mode.', 'woocommerce' ), 'error' );
+        }        
     }
 }
