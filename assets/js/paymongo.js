@@ -15,7 +15,9 @@ jQuery(document).ready(($) => {
 
 			const receiveMessage = (event) => {
 				if (event.data === "3DS-authentication-complete") {
-					fetch(`https://api.paymongo.com/v1/payment_intents/${data.payment_intent_id}?client_key=${data.client_key}`, {
+					const payment_url = `https://api.paymongo.com/v1/payment_intents/${data.payment_intent_id}?client_key=${data.client_key}`;
+
+					fetch(payment_url, {
 						mode: 'cors',
 						method: 'GET',
 						headers: {

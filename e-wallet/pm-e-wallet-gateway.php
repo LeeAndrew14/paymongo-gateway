@@ -11,7 +11,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
 
         $this->id = 'e_wallet'; // payment gateway plugin ID
         $this->has_fields = true; // in case custom credit card form is needed
-        $this->method_title = 'E-Wallet';
+        $this->method_title = 'PayMongo';
         $this->method_description = 'For GCash and Grab Pay payment method';
 
         // Payments types
@@ -63,7 +63,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
                 'title'       => 'Title',
                 'type'        => 'text',
                 'description' => 'This controls the title which the user sees during checkout.',
-                'default'     => 'PayMongo',
+                'default'     => 'E-Wallet',
                 'desc_tip'    => true,
             ),
             'description' => array(
@@ -168,7 +168,7 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
             'timeout'       => 50,
         );
 
-        $response = e_wallet_payment( $headers, $order, $return_url, $type );
+        $response = $this->e_wallet_payment( $headers, $order, $return_url, $type );
 
         if ( !is_wp_error( $response ) ) {
 
@@ -199,148 +199,147 @@ class WC_EWallet_Gateway extends WC_Payment_Gateway {
                  return;
             }
         } else {
-            wc_add_notice(  'Connection error. <br> Please try again.', 'error' );
+            wc_add_notice( 'Connection error. <br> Please try again.', 'error' );
             return;
         }
     }
-}
 
-/**
- * e_wallet_payment
- * 
- * Paymongo e-wallet post request to authorize GCash or Grab Pay payment
- * 
- * @param array $headers authorization and content type header for post request
- * @param object $order Woocommerce object for order details
- * @param string $return_url Woocommerce default thank you URL
- * @param string $type Paymongo payment type gcash or grab_pay
- */
-function e_wallet_payment( $headers, $order, $return_url, $type ) {
-    $payment_source_url = 'https://api.paymongo.com/v1/sources';    
+    /**
+     * e_wallet_payment
+     * 
+     * Paymongo e-wallet post request to authorize GCash or Grab Pay payment
+     * 
+     * @param array $headers authorization and content type header for post request
+     * @param object $order Woocommerce object for order details
+     * @param string $return_url Woocommerce default thank you URL
+     * @param string $type Paymongo payment type gcash or grab_pay
+     */
+    public function e_wallet_payment( $headers, $order, $return_url, $type ) {
+        $payment_source_url = 'https://api.paymongo.com/v1/sources';    
 
-    $customer_name = $order->get_billing_first_name().' '.$order->get_billing_last_name();
+        $customer_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
 
-    $total = $order->get_total() * 100;
+        $total = $order->get_total() * 100;
 
-    // A positive integer with minimum amount of 10000. 10000 is the smallest unit in cents. More info: https://bit.ly/2Tny5ga
-    if ( $total < 10000 ) {  
-        wc_add_notice(  'Minimum transaction should be equal or higher than 100 PHP', 'error' );
-        return;
-    }
+        // A positive integer with minimum amount of 10000. 10000 is the smallest unit in cents. More info: https://bit.ly/2Tny5ga
+        if ( $total < 10000 ) {  
+            wc_add_notice(  'Minimum transaction should be equal or higher than 100 PHP', 'error' );
+            return;
+        }
 
-    $source_data = json_encode([
-        'data' => [
-            'attributes' => [
-                'type'      => $type,
-                'amount'    => $total,
-                'currency'  => get_woocommerce_currency(),
-                'billing'   => [
-                    'address' => [
-                        'line1'         => $order->get_billing_address_1(),
-                        'line2'         => $order->get_billing_address_2(),
-                        'city'          => $order->get_billing_city(),
-                        'state'         => $order->get_billing_state(),
-                        'county'        => $order->get_billing_country(),
-                        'postal_code'   => $order->get_billing_postcode(),
+        $source_data = json_encode([
+            'data' => [
+                'attributes' => [
+                    'type'      => $type,
+                    'amount'    => $total,
+                    'currency'  => get_woocommerce_currency(),
+                    'billing'   => [
+                        'address' => [
+                            'line1'         => $order->get_billing_address_1(),
+                            'line2'         => $order->get_billing_address_2(),
+                            'city'          => $order->get_billing_city(),
+                            'state'         => $order->get_billing_state(),
+                            'county'        => $order->get_billing_country(),
+                            'postal_code'   => $order->get_billing_postcode(),
+                        ],
+                        'name'  => $customer_name,
+                        'email' => $order->get_billing_email(),
                     ],
-                    'name'  => $customer_name,
-                    'email' => $order->get_billing_email(),
-                ],
-                'phone' => $order->get_billing_phone(),
-                'redirect'  => [
-                    'success'   => $return_url,
-                    'failed'    => wc_get_checkout_url(),
-                ],                
+                    'phone' => $order->get_billing_phone(),
+                    'redirect'  => [
+                        'success'   => $return_url,
+                        'failed'    => wc_get_checkout_url(),
+                    ],                
+                ]
             ]
-        ]
-    ]);    
-            
-    // Array with parameters for API interaction
-    $source_payload = array(                                
-        'headers'   => $headers,
-        'body'      => $source_data
-    );                        
+        ]);    
+                
+        // Array with parameters for API interaction
+        $source_payload = array(                                
+            'headers'   => $headers,
+            'body'      => $source_data
+        );                        
 
-    // API interaction could be built with wp_remote_post()
-    $response = wp_remote_post( $payment_source_url, $source_payload );
+        // API interaction could be built with wp_remote_post()
+        $response = wp_remote_post( $payment_source_url, $source_payload );
 
-    return $response;
+        return $response;
+    }
 }
 
 /**
  * Finalize order after GCash or Grab pay payment process
  */
-add_action( 'woocommerce_thankyou', array('WC_EWallet_Create_Payment', 'ewallet_create_payment') );
-class WC_EWallet_Create_Payment{
-    public static function ewallet_create_payment( $order_id ) {
+add_action( 'woocommerce_thankyou', 'ewallet_create_payment' );
+function ewallet_create_payment( $order_id ) {
+    global $woocommerce;
 
-        global $woocommerce;
+    $order = wc_get_order( $order_id );
+    $status = $order->get_status();
 
-        $order = wc_get_order( $order_id );
-        $status = $order->get_status();
+    $payment_method = $order->get_payment_method();
 
-        if ( $status == 'processing' ) {
-            return;
-        }
+    if ( $status == 'processing' || ! $payment_method == 'e-wallet' ) {
+        return;
+    }
 
-        $payment_url = 'https://api.paymongo.com/v1/payments';
+    $payment_url = 'https://api.paymongo.com/v1/payments';
 
-        session_start();
+    session_start();
 
-        $payment_data = json_encode([
-            'data' => [
-                'attributes' => [
-                    'description'           => $_SESSION['payment_desc'],
-                    'statement_descriptor'  => $_SESSION['payment_desc'],
-                    'amount'                => $order->get_total() * 100,
-                    'currency'              => get_woocommerce_currency(),
-                    'source' => [
-                        'id'    => $_SESSION['source_id'],
-                        'type'  => 'source'
-                    ]
+    $payment_data = json_encode([
+        'data' => [
+            'attributes' => [
+                'description'           => $_SESSION['payment_desc'],
+                'statement_descriptor'  => $_SESSION['payment_desc'],
+                'amount'                => $order->get_total() * 100,
+                'currency'              => get_woocommerce_currency(),
+                'source' => [
+                    'id'    => $_SESSION['source_id'],
+                    'type'  => 'source'
                 ]
             ]
-        ]);
+        ]
+    ]);
 
-        $headers = array(
-            'Authorization' => 'Basic ' . base64_encode( $_SESSION['private_key'] ),
-            'Content-Type'  => 'application/json',
-            'timeout'       => 50,
-        );
+    $headers = array(
+        'Authorization' => 'Basic ' . base64_encode( $_SESSION['private_key'] ),
+        'Content-Type'  => 'application/json',
+        'timeout'       => 50,
+    );
 
-        $payment_payload = array(
-            'headers'   => $headers,
-            'body'      => $payment_data
-        );
+    $payment_payload = array(
+        'headers'   => $headers,
+        'body'      => $payment_data
+    );
 
-        $response = wp_remote_post( $payment_url, $payment_payload );
+    $response = wp_remote_post( $payment_url, $payment_payload );
 
-        if ( ! is_wp_error( $response ) ) {
-            $body = json_decode( $response['body'], true );
+    if ( ! is_wp_error( $response ) ) {
+        $body = json_decode( $response['body'], true );
 
-            if ( isset( $body['errors'] ) ) {
-                $order->add_order_note( 'Something went wrong while processing this order, please check woocommerce logs', true );
+        if ( isset( $body['errors'] ) ) {
+            $order->add_order_note( 'Something went wrong while processing this order, please check woocommerce logs', true );
 
-                wc_get_logger()->add( 'paymongo-gateway', 'E-Wallet '.wc_print_r( $response['body'], true ) );
+            wc_get_logger()->add( 'paymongo-gateway', 'E-Wallet '.wc_print_r( $response['body'], true ) );
 
-                wp_redirect( wc_get_checkout_url() );
-            } else {
-                $status = $body['data']['attributes']['status'];
+            wp_redirect( wc_get_checkout_url() );
+        } else {
+            $status = $body['data']['attributes']['status'];
 
-                if ( $status == 'paid' ) {
-                    // Payment received
-                    $order->payment_complete();
+            if ( $status == 'paid' ) {
+                // Payment received
+                $order->payment_complete();
 
-                    wc_reduce_stock_levels( $order_id );
+                wc_reduce_stock_levels( $order_id );
 
-                    // some notes to customer (replace true with false to make it private)
-                    $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
+                // some notes to customer (replace true with false to make it private)
+                $order->add_order_note( 'Hey, your order is paid! Thank you!', true );
 
-                    // Empty cart
-                    $woocommerce->cart->empty_cart();
+                // Empty cart
+                $woocommerce->cart->empty_cart();
 
-                    session_destroy();
-                }
+                session_destroy();
             }
         }
     }
@@ -349,18 +348,17 @@ class WC_EWallet_Create_Payment{
 /**
  * Prompt error message if e-wallet transaction failed
  */
-add_action( 'woocommerce_thankyou', ['Error_Message', 'payment_error_message'] );
-class Error_Message {
-    public static function payment_error_message( $order_id ) {
-        
-        $order = wc_get_order( $order_id );
-        $status = $order->get_status();
+add_action( 'woocommerce_thankyou', 'payment_error_message' );
+function payment_error_message( $order_id ) {
+    $order = wc_get_order( $order_id );
+    $status = $order->get_status();
 
-        if ( $status == 'processing' ) {
-            return;
-        } else {
-            wc_add_notice( __( 'Something went wrong while processing your order, don\'t worry no charges has been made.
-                <br> Kindly try again or try using a different payment mode.', 'woocommerce' ), 'error' );
-        }        
+    $payment_method = $order->get_payment_method();
+
+    if ( $status == 'processing' || ! $payment_method == 'e-wallet' ) {
+        return;
+    } else {
+        wc_add_notice( __( 'Something went wrong while processing your order, don\'t worry no charges has been made.
+            <br> Kindly try again or try using a different payment mode.', 'woocommerce' ), 'error' );
     }
 }

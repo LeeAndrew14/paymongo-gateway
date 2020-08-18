@@ -6,17 +6,13 @@
  * Author: Lee Andrew
  * Author URI: https://github.com/LeeAndrew14
  * Version: 1.0.1
- *
-
-/*
- * Registers Paymongo class as a WooCommerce payment gateway
  */
 
+// Registers Paymongo class as a WooCommerce payment gateway
 defined( 'ABSPATH' ) or die( 'No script kiddies please!' );
 
 add_filter( 'woocommerce_payment_gateways', 'paymongo_gateway_init' );
 function paymongo_gateway_init( $gateways ) {
-
 
     if ( ! class_exists( 'WC_Payment_Gateway' ) || ! class_exists( 'WC_Payment_Gateway' ) ) return;
 
