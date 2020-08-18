@@ -279,7 +279,7 @@ function ewallet_create_payment( $order_id ) {
 
     $payment_method = $order->get_payment_method();
 
-    if ( $status == 'processing' || ! $payment_method == 'e-wallet' ) {
+    if ( $status == 'processing' || $payment_method !== 'e-wallet' ) {
         return;
     }
 
@@ -355,7 +355,7 @@ function payment_error_message( $order_id ) {
 
     $payment_method = $order->get_payment_method();
 
-    if ( $status == 'processing' || ! $payment_method == 'e-wallet' ) {
+    if ( $status == 'processing' || $payment_method !== 'e-wallet' ) {
         return;
     } else {
         wc_add_notice( __( 'Something went wrong while processing your order, don\'t worry no charges has been made.
