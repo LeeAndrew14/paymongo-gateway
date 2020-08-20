@@ -252,21 +252,25 @@ class WC_Credit_Card_Gateway extends WC_Payment_Gateway {
             $redirect_url = $response['data']['attributes']['next_action']['redirect']['url'];
             $client_key = $response['data']['attributes']['client_key'];
 
-            session_start();
+            // session_start();
 
-            $_SESSION['3DS']            = true;
-            $_SESSION['url']            = $redirect_url;
-            $_SESSION['order_id']       = $order_id;
-            $_SESSION['intent_id']      = $intent_id;
-            $_SESSION['return_url']     = $return_url;
-            $_SESSION['client_key']     = $client_key;
-            $_SESSION['private_key']    = $this->private_key;    
+            // $_SESSION['3DS']            = true;
+            // $_SESSION['url']            = $redirect_url;
+            // $_SESSION['order_id']       = $order_id;
+            // $_SESSION['intent_id']      = $intent_id;
+            // $_SESSION['return_url']     = $return_url;
+            // $_SESSION['client_key']     = $client_key;
+            // $_SESSION['private_key']    = $this->private_key;    
             
-            return array(
-                'result' => 'success',
-                'redirect' => $redirect_url
-            );
+            // return array(
+            //     'result' => 'success',
+            //     'redirect' => $redirect_url
+            // );
             // echo isset($_POST['status']);
+
+            wc_add_notice( 'Sorry this credit card is currently not supported. 
+                <br> Kindly try again or try using a different payment mode.', 'error' );
+            return;
         } else {
             wc_add_notice( 'Please try again.', 'error' );
             return;
